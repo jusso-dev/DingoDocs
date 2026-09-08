@@ -9,6 +9,7 @@ import {
   users,
 } from "@/db/schema";
 import { sendAuthenticationEmail } from "@/lib/email/send";
+import { canGrantRole, type Role } from "@/lib/permissions/matrix";
 
 export type SecurityActor = { organisationId: string; userId: string };
 
@@ -53,8 +54,9 @@ export async function revokeOrganisationUserSessions(
   actor: SecurityActor,
   targetUserId: string,
 ) {
+  const actorRole = await requireActorRole(actor);
   const [member] = await db
-    .select({ id: organisationMembers.id })
+    .select({ id: organisationMembers.id, role: organisationMembers.role })
     .from(organisationMembers)
     .where(
       and(
@@ -65,6 +67,8 @@ export async function revokeOrganisationUserSessions(
     )
     .limit(1);
   if (!member) throw new Error("User is not an active organisation member");
+  if (!canGrantRole(actorRole, member.role as Role))
+    throw new Error("Cannot revoke sessions for a more privileged member");
   const revoked = await db
     .delete(sessions)
     .where(eq(sessions.userId, targetUserId))
@@ -115,6 +119,9 @@ export async function createSecureInvitation(
   actor: SecurityActor,
   input: { email: string; role: typeof organisationMembers.$inferInsert.role },
 ) {
+  const actorRole = await requireActorRole(actor);
+  if (!canGrantRole(actorRole, input.role as Role))
+    throw new Error("Cannot invite a more privileged role");
   const email = input.email.trim().toLowerCase();
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1_000);
@@ -188,6 +195,42 @@ export async function acceptSecureInvitation(
       throw new Error(
         "Invitation is invalid, expired, or belongs to another user",
       );
+    if (invitation.invitedBy) {
+      const [inviter] = await tx
+        .select({ role: organisationMembers.role })
+        .from(organisationMembers)
+        .where(
+          and(
+            eq(organisationMembers.organisationId, invitation.organisationId),
+            eq(organisationMembers.userId, invitation.invitedBy),
+            isNull(organisationMembers.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (
+        !inviter ||
+        !canGrantRole(inviter.role as Role, invitation.role as Role)
+      )
+        throw new Error(
+          "Invitation is invalid, expired, or belongs to another user",
+        );
+    }
+    const [existing] = await tx
+      .select({
+        role: organisationMembers.role,
+        deletedAt: organisationMembers.deletedAt,
+      })
+      .from(organisationMembers)
+      .where(
+        and(
+          eq(organisationMembers.organisationId, invitation.organisationId),
+          eq(organisationMembers.userId, user.id),
+        ),
+      )
+      .limit(1);
+    if (existing && !existing.deletedAt) {
+      throw new Error("User is already a member of this organisation");
+    }
     await tx
       .insert(organisationMembers)
       .values({
@@ -240,4 +283,79 @@ export async function revokeSecureInvitation(
     targetType: "invitation",
     targetId: invitation.id,
   });
+}
+
+export async function updateOrganisationMemberRole(
+  actor: SecurityActor,
+  input: { userId: string; role: Role },
+) {
+  const actorRole = await requireActorRole(actor);
+  if (input.userId === actor.userId)
+    throw new Error("Cannot change your own role");
+  if (!canGrantRole(actorRole, input.role))
+    throw new Error("Cannot assign a more privileged role");
+  const [member] = await db
+    .select({
+      id: organisationMembers.id,
+      role: organisationMembers.role,
+    })
+    .from(organisationMembers)
+    .where(
+      and(
+        eq(organisationMembers.organisationId, actor.organisationId),
+        eq(organisationMembers.userId, input.userId),
+        isNull(organisationMembers.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!member) throw new Error("User is not an active organisation member");
+  if (!canGrantRole(actorRole, member.role as Role))
+    throw new Error("Cannot change a more privileged member");
+  if (
+    member.role === "organisation_owner" &&
+    input.role !== "organisation_owner"
+  ) {
+    const owners = await db
+      .select({ id: organisationMembers.id })
+      .from(organisationMembers)
+      .where(
+        and(
+          eq(organisationMembers.organisationId, actor.organisationId),
+          eq(organisationMembers.role, "organisation_owner"),
+          isNull(organisationMembers.deletedAt),
+        ),
+      );
+    if (owners.length <= 1)
+      throw new Error("Cannot demote the last organisation owner");
+  }
+  const [updated] = await db
+    .update(organisationMembers)
+    .set({ role: input.role })
+    .where(eq(organisationMembers.id, member.id))
+    .returning({ id: organisationMembers.id, role: organisationMembers.role });
+  await db.insert(auditEvents).values({
+    organisationId: actor.organisationId,
+    actorId: actor.userId,
+    action: "organisation.member.role_changed",
+    targetType: "user",
+    targetId: input.userId,
+    metadata: { from: member.role, to: input.role },
+  });
+  return updated;
+}
+
+async function requireActorRole(actor: SecurityActor) {
+  const [membership] = await db
+    .select({ role: organisationMembers.role })
+    .from(organisationMembers)
+    .where(
+      and(
+        eq(organisationMembers.organisationId, actor.organisationId),
+        eq(organisationMembers.userId, actor.userId),
+        isNull(organisationMembers.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!membership) throw new Error("User is not an active organisation member");
+  return membership.role as Role;
 }

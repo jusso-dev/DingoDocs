@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { db } from "@/db";
 import { evidence, evidenceLegalHolds } from "@/db/schema";
-import { roles } from "@/lib/permissions/matrix";
+import { grantableRoles } from "@/lib/permissions/matrix";
 import { requirePermission } from "@/lib/permissions/require";
 import { formatDateTime } from "@/lib/time-zone";
 import {
@@ -14,6 +14,7 @@ import {
   releaseLegalHoldAction,
   revokeInvitationAction,
   revokeUserSessionsAction,
+  updateMemberRoleAction,
 } from "@/server/actions/security";
 import {
   listOrganisationUsers,
@@ -73,7 +74,7 @@ export default async function SettingsPage() {
               placeholder="person@example.com"
             />
             <select className={field} name="role" defaultValue="consultant">
-              {roles.map((role) => (
+              {grantableRoles(context.role).map((role) => (
                 <option key={role} value={role}>
                   {role.replaceAll("_", " ")}
                 </option>
@@ -120,15 +121,18 @@ export default async function SettingsPage() {
 
         <section className="rounded-xl border bg-paper xl:col-span-2">
           <div className="border-b p-5">
-            <h2 className="font-semibold">Administrator session revocation</h2>
+            <h2 className="font-semibold">Members, roles, and sessions</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Force logout across every active browser for an organisation
-              member.
+              Role changes cannot exceed your privilege. Force logout across
+              every active browser for a member.
             </p>
           </div>
           <ul className="divide-y">
             {members.map((member) => (
-              <li key={member.userId} className="flex items-center gap-4 p-4">
+              <li
+                key={member.userId}
+                className="flex flex-wrap items-center gap-4 p-4"
+              >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
                     {member.name} · {member.email}
@@ -138,6 +142,28 @@ export default async function SettingsPage() {
                     active session(s)
                   </p>
                 </div>
+                <form action={updateMemberRoleAction} className="flex gap-2">
+                  <input type="hidden" name="userId" value={member.userId} />
+                  <select
+                    className={field}
+                    name="role"
+                    defaultValue={member.role}
+                    disabled={member.userId === context.userId}
+                  >
+                    {grantableRoles(context.role).map((role) => (
+                      <option key={role} value={role}>
+                        {role.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={member.userId === context.userId}
+                  >
+                    Update role
+                  </Button>
+                </form>
                 <form action={revokeUserSessionsAction}>
                   <input type="hidden" name="userId" value={member.userId} />
                   <Button

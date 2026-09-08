@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
-import { roles } from "@/lib/permissions/matrix";
+import { canGrantRole, roles, type Role } from "@/lib/permissions/matrix";
 import {
   requireOrganisationContext,
   requirePermission,
@@ -15,6 +15,7 @@ import {
   revokeOrganisationUserSessions,
   revokeOwnSession,
   revokeSecureInvitation,
+  updateOrganisationMemberRole,
 } from "@/server/services/account-security";
 import {
   placeLegalHold,
@@ -41,11 +42,24 @@ export async function revokeUserSessionsAction(formData: FormData) {
 
 export async function createInvitationAction(formData: FormData) {
   const context = await requirePermission("user:manage");
+  const role = z.enum(roles).parse(formData.get("role"));
+  if (!canGrantRole(context.role as Role, role))
+    throw new Error("Cannot invite a more privileged role");
   await createSecureInvitation(context, {
     email: z.string().email().parse(formData.get("email")),
+    role,
+  });
+  revalidatePath("/settings");
+}
+
+export async function updateMemberRoleAction(formData: FormData) {
+  const context = await requirePermission("user:manage");
+  await updateOrganisationMemberRole(context, {
+    userId: id.parse(formData.get("userId")),
     role: z.enum(roles).parse(formData.get("role")),
   });
   revalidatePath("/settings");
+  revalidatePath("/team");
 }
 
 export async function revokeInvitationAction(formData: FormData) {

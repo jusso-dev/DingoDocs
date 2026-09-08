@@ -12,8 +12,13 @@ import {
 } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, engagements, findings, reports, tasks } from "@/db/schema";
+import {
+  engagementVisibility,
+  type AccessActor,
+} from "@/lib/permissions/access";
 
-export async function getDashboardData(organisationId: string) {
+export async function getDashboardData(actor: AccessActor) {
+  const organisationId = actor.organisationId;
   const now = new Date();
   const inThirtyDays = new Date(now.getTime() + 30 * 86_400_000);
   const [
@@ -41,6 +46,7 @@ export async function getDashboardData(organisationId: string) {
             "retesting",
           ]),
           isNull(engagements.deletedAt),
+          engagementVisibility(actor, engagements.id),
         ),
       ),
     db
@@ -54,6 +60,7 @@ export async function getDashboardData(organisationId: string) {
             "client_review",
             "qa_approved",
           ]),
+          engagementVisibility(actor, reports.engagementId),
         ),
       ),
     db
@@ -68,6 +75,7 @@ export async function getDashboardData(organisationId: string) {
             "remediation_in_progress",
             "ready_for_retest",
           ]),
+          engagementVisibility(actor, findings.engagementId),
         ),
       ),
     db
@@ -78,6 +86,7 @@ export async function getDashboardData(organisationId: string) {
           eq(tasks.organisationId, organisationId),
           lte(tasks.dueAt, now),
           inArray(tasks.status, ["todo", "in_progress", "blocked"]),
+          engagementVisibility(actor, tasks.engagementId),
         ),
       ),
     db
@@ -106,6 +115,7 @@ export async function getDashboardData(organisationId: string) {
           gte(engagements.startDate, now.toISOString().slice(0, 10)),
           lte(engagements.startDate, inThirtyDays.toISOString().slice(0, 10)),
           isNull(engagements.deletedAt),
+          engagementVisibility(actor, engagements.id),
         ),
       )
       .orderBy(asc(engagements.startDate))
@@ -124,6 +134,7 @@ export async function getDashboardData(organisationId: string) {
         and(
           eq(findings.organisationId, organisationId),
           isNull(findings.deletedAt),
+          engagementVisibility(actor, findings.engagementId),
         ),
       )
       .orderBy(desc(findings.updatedAt))
@@ -141,6 +152,7 @@ export async function getDashboardData(organisationId: string) {
         and(
           eq(tasks.organisationId, organisationId),
           inArray(tasks.status, ["todo", "in_progress", "blocked"]),
+          engagementVisibility(actor, tasks.engagementId),
         ),
       )
       .orderBy(sql`${tasks.dueAt} asc nulls last`)

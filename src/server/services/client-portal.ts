@@ -28,6 +28,11 @@ import {
   portalEngagementQuery,
   requirePortalEngagement,
 } from "@/lib/permissions/portal";
+import {
+  assertEngagementAccess,
+  PermissionDeniedError,
+  requireActorPermission,
+} from "@/lib/permissions/require";
 import { createReportRevision } from "./reports";
 
 export type PortalActor = { organisationId: string; userId: string };
@@ -546,6 +551,11 @@ async function requireInternalRetest(actor: PortalActor, attemptId: string) {
     )
     .limit(1);
   if (!rows[0]) throw new PortalNotFoundError();
+  await assertEngagementAccess({
+    userId: actor.userId,
+    organisationId: actor.organisationId,
+    engagementId: rows[0].finding.engagementId,
+  });
   return rows[0];
 }
 
@@ -703,11 +713,18 @@ export async function completeRetest(
     .orderBy(desc(reports.updatedAt))
     .limit(1);
   if (published[0]) {
-    const revision = await createReportRevision(actor, published[0].id);
-    await db
-      .update(retestAttempts)
-      .set({ updatedReportVersionId: revision.id })
-      .where(eq(retestAttempts.id, input.attemptId));
+    try {
+      await requireActorPermission(actor, "report:publish", {
+        engagementId: current.finding.engagementId,
+      });
+      const revision = await createReportRevision(actor, published[0].id);
+      await db
+        .update(retestAttempts)
+        .set({ updatedReportVersionId: revision.id })
+        .where(eq(retestAttempts.id, input.attemptId));
+    } catch (error) {
+      if (!(error instanceof PermissionDeniedError)) throw error;
+    }
   }
   return requireInternalRetest(actor, input.attemptId);
 }

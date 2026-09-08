@@ -58,13 +58,19 @@ export async function handleMcpJsonRpc(
     if (request.method === "ping") return result(id, {});
     if (request.method === "tools/list") {
       return result(id, {
-        tools: mcpTools.map((tool) => ({
-          name: tool.name,
-          title: tool.title,
-          description: tool.description,
-          inputSchema: mcpToolJsonSchema(tool.inputSchema),
-          annotations: tool.annotations,
-        })),
+        tools: mcpTools
+          .filter((tool) =>
+            tool.requiredScopes.every((scope) =>
+              principal.scopes.includes(scope),
+            ),
+          )
+          .map((tool) => ({
+            name: tool.name,
+            title: tool.title,
+            description: tool.description,
+            inputSchema: mcpToolJsonSchema(tool.inputSchema),
+            annotations: tool.annotations,
+          })),
       });
     }
     if (request.method === "tools/call") {

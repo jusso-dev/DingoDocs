@@ -21,7 +21,11 @@ import {
   users,
 } from "@/db/schema";
 import type { Role } from "@/lib/permissions/matrix";
-import { requireActorPermission } from "@/lib/permissions/require";
+import { EngagementAccessError } from "@/lib/permissions/access";
+import {
+  assertEngagementAccess,
+  requireActorPermission,
+} from "@/lib/permissions/require";
 import { visibleToAuthor } from "@/lib/permissions/visibility";
 
 export type WorkspaceActor = {
@@ -645,6 +649,10 @@ export async function createTimelineEntry(
 ) {
   return db.transaction(async (tx) => {
     await requireEngagement(tx, actor, input.engagementId);
+    if (input.clientVisible)
+      await requireActorPermission(actor, "finding:approve", {
+        engagementId: input.engagementId,
+      });
     const [entry] = await tx
       .insert(timelineEvents)
       .values({
@@ -850,6 +858,12 @@ export async function getEngagementWorkspace(
   actor: WorkspaceActor,
   engagementId: string,
 ) {
+  try {
+    await assertEngagementAccess({ ...actor, engagementId });
+  } catch (error) {
+    if (error instanceof EngagementAccessError) return null;
+    throw error;
+  }
   const engagement = await db
     .select()
     .from(engagements)
@@ -1034,9 +1048,10 @@ type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function requireEngagement(
   tx: Transaction,
-  actor: Pick<WorkspaceActor, "organisationId">,
+  actor: WorkspaceActor,
   engagementId: string,
 ) {
+  await assertEngagementAccess({ ...actor, engagementId });
   const [engagement] = await tx
     .select()
     .from(engagements)

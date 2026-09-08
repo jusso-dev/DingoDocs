@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { scopeItems, scopeVersions } from "@/db/schema";
 import { apiReadContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { assertActorEngagementAccess } from "@/lib/permissions/require";
 
 export async function GET(
   request: Request,
@@ -15,6 +16,7 @@ export async function GET(
     const { id } = await context.params;
     z.string().uuid().parse(id);
     const principal = await apiReadContext(request, "engagements:read");
+    await assertActorEngagementAccess(principal, id);
     const [version] = await db
       .select()
       .from(scopeVersions)

@@ -44,6 +44,7 @@ import {
   type NormalizedImportItem,
 } from "@/lib/imports/adapters";
 import { summariseScannerIngest } from "@/lib/imports/ingest-summary";
+import { assertActorEngagementAccess } from "@/lib/permissions/require";
 import { uploadEvidence } from "./evidence";
 import {
   createTimelineEntry,
@@ -330,7 +331,12 @@ export async function applyScannerImport(
 }
 
 export async function getImportPreview(
-  actor: Pick<ExchangeActor, "organisationId">,
+  actor: {
+    organisationId: string;
+    userId?: string;
+    role?: string | null;
+    serviceAccountId?: string | null;
+  },
   importRunId: string,
 ) {
   const [run] = await db
@@ -344,6 +350,7 @@ export async function getImportPreview(
     )
     .limit(1);
   if (!run) throw new ExchangeScopeError();
+  await assertActorEngagementAccess(actor, run.engagementId);
   const items = await db
     .select()
     .from(importItems)

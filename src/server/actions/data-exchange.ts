@@ -4,9 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { importAdapterNames } from "@/lib/imports/adapters";
-import { requirePermission } from "@/lib/permissions/require";
+import {
+  requireInternalOrganisationContext,
+  requirePermission,
+} from "@/lib/permissions/require";
 import {
   applyScannerImport,
+  getImportPreview,
   mediaTypeForImport,
   previewScannerImport,
 } from "@/server/services/data-exchange";
@@ -31,7 +35,11 @@ export async function applyScannerImportAction(
   importRunId: string,
   formData: FormData,
 ) {
-  const context = await requirePermission("finding:create");
+  const organisation = await requireInternalOrganisationContext();
+  const preview = await getImportPreview(organisation, id.parse(importRunId));
+  const context = await requirePermission("finding:create", {
+    engagementId: preview.run.engagementId,
+  });
   await applyScannerImport(context, {
     importRunId: id.parse(importRunId),
     selectedItemIds: formData

@@ -17,6 +17,10 @@ import {
   findingStatusEnum,
   severityEnum,
 } from "@/db/schema";
+import {
+  engagementVisibility,
+  type AccessActor,
+} from "@/lib/permissions/access";
 
 const periods = ["30", "90", "180", "365", "all"] as const;
 const statusGroups = ["open", "remediated", "risk_accepted", "all"] as const;
@@ -66,10 +70,11 @@ export function parseRiskAnalyticsFilters(
 }
 
 export async function getRiskAnalytics(
-  organisationId: string,
+  actor: AccessActor,
   filters: RiskAnalyticsFilters,
   now = new Date(),
 ) {
+  const organisationId = actor.organisationId;
   const conditions: SQL[] = [
     eq(findings.organisationId, organisationId),
     isNull(findings.deletedAt),
@@ -78,6 +83,8 @@ export async function getRiskAnalytics(
     eq(clients.organisationId, organisationId),
     isNull(clients.deletedAt),
   ];
+  const visibility = engagementVisibility(actor, findings.engagementId);
+  if (visibility) conditions.push(visibility);
   if (filters.clientId)
     conditions.push(eq(engagements.clientId, filters.clientId));
   if (filters.severity !== "all")

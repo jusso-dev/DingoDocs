@@ -5,6 +5,7 @@ import { findings } from "@/db/schema";
 import { patchFindingInput } from "@/lib/api/finding-input";
 import { apiReadContext, apiWriteContext } from "@/lib/api/authentication";
 import { apiError, apiNotFound } from "@/lib/api/responses";
+import { engagementVisibility } from "@/lib/permissions/access";
 import { patchFindingNarrative } from "@/server/services/findings";
 
 export async function GET(
@@ -24,6 +25,7 @@ export async function GET(
           eq(findings.id, id),
           eq(findings.organisationId, principal.organisationId),
           isNull(findings.deletedAt),
+          engagementVisibility(principal, findings.engagementId),
         ),
       )
       .limit(1);
@@ -42,16 +44,30 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     z.string().uuid().parse(id);
-    const principal = await apiWriteContext(
+    const principal = await apiReadContext(request, "findings:write");
+    const existing = await db
+      .select({ engagementId: findings.engagementId })
+      .from(findings)
+      .where(
+        and(
+          eq(findings.id, id),
+          eq(findings.organisationId, principal.organisationId),
+          isNull(findings.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!existing[0]) return apiNotFound(requestId, "Finding was not found");
+    const writer = await apiWriteContext(
       request,
       "findings:write",
       "finding:create",
+      { engagementId: existing[0].engagementId },
     );
-    if (!principal.userId)
+    if (!writer.userId)
       throw new Error("API key does not have an attributable owner");
     const input = patchFindingInput.parse(await request.json());
     const updated = await patchFindingNarrative(
-      { organisationId: principal.organisationId, userId: principal.userId },
+      { organisationId: writer.organisationId, userId: writer.userId },
       {
         findingId: id,
         ...input,

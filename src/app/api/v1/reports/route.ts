@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { reports } from "@/db/schema";
 import { apiReadContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { engagementVisibility } from "@/lib/permissions/access";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
         ? eq(reports.engagementId, query.engagementId)
         : undefined,
       query.status ? eq(reports.status, query.status) : undefined,
+      engagementVisibility(context, reports.engagementId),
     );
     const [data, count] = await Promise.all([
       db

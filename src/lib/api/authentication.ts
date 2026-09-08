@@ -8,9 +8,10 @@ import {
   auditEvents,
   organisationMembers,
   serviceAccounts,
+  users,
 } from "@/db/schema";
 import type { ApiScope } from "@/lib/api/scopes";
-import type { Permission } from "@/lib/permissions/matrix";
+import type { Permission, Role } from "@/lib/permissions/matrix";
 import {
   requireInternalOrganisationContext,
   requirePermission,
@@ -38,6 +39,7 @@ export type ApiPrincipal = {
   apiKeyId: string;
   userId?: string;
   serviceAccountId?: string;
+  role?: Role;
   scopes: string[];
 };
 
@@ -77,10 +79,18 @@ export async function authenticateApiRequest(
       403,
       "insufficient_scope",
     );
+  let role: Role | undefined;
   if (key.userId) {
     const [membership] = await db
-      .select({ id: organisationMembers.id, role: organisationMembers.role })
+      .select({
+        id: organisationMembers.id,
+        role: organisationMembers.role,
+        banned: users.banned,
+        banExpires: users.banExpires,
+        disabledAt: users.disabledAt,
+      })
       .from(organisationMembers)
+      .innerJoin(users, eq(users.id, organisationMembers.userId))
       .where(
         and(
           eq(organisationMembers.organisationId, key.organisationId),
@@ -91,6 +101,13 @@ export async function authenticateApiRequest(
       .limit(1);
     if (!membership)
       throw new ApiAuthenticationError("API key owner is no longer a member");
+    if (membership.disabledAt)
+      throw new ApiAuthenticationError("API key owner is disabled");
+    if (
+      membership.banned &&
+      (!membership.banExpires || membership.banExpires.getTime() > Date.now())
+    )
+      throw new ApiAuthenticationError("API key owner is disabled");
     if (
       membership.role === "client_user" ||
       membership.role === "client_administrator"
@@ -100,6 +117,7 @@ export async function authenticateApiRequest(
         403,
         "client_portal_required",
       );
+    role = membership.role as Role;
   }
   await db
     .update(apiKeys)
@@ -110,6 +128,7 @@ export async function authenticateApiRequest(
     apiKeyId: key.id,
     userId: key.userId ?? key.createdBy ?? undefined,
     serviceAccountId: key.serviceAccountId ?? undefined,
+    role,
     scopes: key.scopes,
   };
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assertPermissionMatrix,
+  canGrantRole,
+  effectiveRoles,
   hasPermission,
   permissionMatrix,
   permissions,
@@ -23,5 +25,41 @@ describe("permission matrix", () => {
     expect(hasPermission("client_user", "evidence:view_restricted")).toBe(
       false,
     );
+  });
+
+  it("prevents administrators from granting owner or platform roles", () => {
+    expect(
+      canGrantRole("organisation_administrator", "organisation_owner"),
+    ).toBe(false);
+    expect(
+      canGrantRole("organisation_administrator", "platform_administrator"),
+    ).toBe(false);
+    expect(canGrantRole("organisation_owner", "platform_administrator")).toBe(
+      false,
+    );
+    expect(canGrantRole("organisation_owner", "organisation_owner")).toBe(true);
+    expect(canGrantRole("organisation_administrator", "consultant")).toBe(true);
+  });
+
+  it("does not let consultants act on unassigned engagements", () => {
+    expect(
+      effectiveRoles({
+        organisationRole: "consultant",
+        engagementId: "eng-1",
+      }),
+    ).toEqual([]);
+    expect(
+      effectiveRoles({
+        organisationRole: "consultant",
+        engagementRole: "lead_consultant",
+        engagementId: "eng-1",
+      }),
+    ).toEqual(["lead_consultant"]);
+    expect(
+      effectiveRoles({
+        organisationRole: "organisation_owner",
+        engagementId: "eng-1",
+      }),
+    ).toEqual(["organisation_owner"]);
   });
 });

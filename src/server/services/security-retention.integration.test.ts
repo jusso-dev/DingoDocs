@@ -244,6 +244,53 @@ run("account security and retention with PostgreSQL", () => {
       ),
     ).resolves.toBe(1);
   });
+
+  it("blocks invitation privilege escalation and membership overwrite", async () => {
+    process.env.SMTP_HOST = "";
+    const adminId = randomUUID();
+    await modules.db.insert(modules.users).values({
+      id: adminId,
+      name: "Org Admin",
+      email: `${adminId}@test.invalid`,
+      emailVerified: true,
+    });
+    await modules.db.insert(modules.organisationMembers).values({
+      organisationId: ids.organisation,
+      userId: adminId,
+      role: "organisation_administrator",
+      joinedAt: new Date(),
+    });
+    await expect(
+      modules.createSecureInvitation(
+        { organisationId: ids.organisation, userId: adminId },
+        { email: "escalate@test.invalid", role: "organisation_owner" },
+      ),
+    ).rejects.toThrow("more privileged");
+    await expect(
+      modules.createSecureInvitation(
+        { organisationId: ids.organisation, userId: adminId },
+        { email: "escalate@test.invalid", role: "platform_administrator" },
+      ),
+    ).rejects.toThrow("more privileged");
+    const token = randomUUID() + randomUUID();
+    await modules.db.insert(modules.organisationInvitations).values({
+      organisationId: ids.organisation,
+      email: `${ids.invited}@test.invalid`,
+      role: "organisation_owner",
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      invitedBy: ids.actor,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await expect(
+      modules.acceptSecureInvitation(
+        { id: ids.invited, email: `${ids.invited}@test.invalid` },
+        token,
+      ),
+    ).rejects.toThrow("already a member");
+    await modules.db
+      .delete(modules.users)
+      .where(modules.eq(modules.users.id, adminId));
+  });
 });
 
 async function load() {

@@ -4,18 +4,20 @@ The practical baseline is OWASP ASVS Level 2 with additional controls for sensit
 
 ## Primary threats and controls
 
-| Threat                    | Principal controls                                                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Cross-organisation access | Server-derived tenant context, organisation key on owned tables, scoped repositories, membership revalidation, integration tests |
-| Identifier enumeration    | UUID identifiers, tenant predicates, uniform not-found behaviour                                                                 |
-| Session theft             | HTTP-only secure cookies, SameSite, finite expiry, revocation records, MFA support                                               |
-| Stored XSS                | React output encoding, structured rich-text rendering, restrictive CSP, server-side validation                                   |
-| Evidence leakage          | Private storage, opaque keys, signed short-lived S3 URLs, server-authorised downloads, download audit events                     |
-| Malicious uploads         | Size and type allowlists, filename normalisation, SHA-256 hashing, malware-scan state, quarantine-ready jobs                     |
-| Workflow bypass           | Explicit transition graph, permission checks, reasoned override, append-only transition and audit records                        |
-| Client portal leakage     | Separate role-gated routes, named engagement grants, explicit publication flags, server-side field selection, uniform 404 tests  |
-| Secret disclosure         | Server-only provider credentials, redacted audit metadata, no browser storage tokens, no sensitive content in email              |
-| Job replay or duplication | Idempotency keys, transactional claiming, retry/backoff, dead-letter state                                                       |
+| Threat                    | Principal controls                                                                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Cross-organisation access | Server-derived tenant context, organisation key on owned tables, scoped repositories, membership revalidation, integration tests                                                                                                                 |
+| Cross-engagement access   | Need-to-know ACL: only organisation owners/admins see every engagement; other roles require an engagement membership. Lists, search, evidence, reports, and writes use that membership. Engagement assignment is the ACL, not a privilege add-on |
+| Invitation privilege      | Invites cannot grant a more privileged role than the inviter. Accepting an invite cannot overwrite an active membership                                                                                                                          |
+| Identifier enumeration    | UUID identifiers, tenant predicates, uniform not-found behaviour                                                                                                                                                                                 |
+| Session theft             | HTTP-only secure cookies, SameSite, finite expiry, revocation records, MFA support                                                                                                                                                               |
+| Stored XSS                | React output encoding, structured rich-text rendering, restrictive CSP, server-side validation                                                                                                                                                   |
+| Evidence leakage          | Private storage, opaque keys, signed short-lived S3 URLs, server-authorised downloads, download audit events                                                                                                                                     |
+| Malicious uploads         | Size and type allowlists, filename normalisation, SHA-256 hashing, malware-scan state, quarantine-ready jobs                                                                                                                                     |
+| Workflow bypass           | Explicit transition graph, permission checks, reasoned override, append-only transition and audit records                                                                                                                                        |
+| Client portal leakage     | Separate role-gated routes, named engagement grants, explicit publication flags, server-side field selection, uniform 404 tests                                                                                                                  |
+| Secret disclosure         | Server-only provider credentials, redacted audit metadata, no browser storage tokens, no sensitive content in email                                                                                                                              |
+| Job replay or duplication | Idempotency keys, transactional claiming, retry/backoff, dead-letter state                                                                                                                                                                       |
 
 ## Operational requirements
 
@@ -23,6 +25,8 @@ Use TLS, a high-entropy Better Auth secret, encrypted disks, isolated networks, 
 
 AI is disabled by default. Enabling an external provider is an explicit organisation decision and generated content remains an untrusted draft requiring human confirmation.
 
-Client roles are intentionally excluded from organisation-wide REST reads, report preview/export handlers, and the internal application shell. Client-owned API keys receive `client_portal_required`; service credentials remain organisation-scoped integrations. Client evidence preview/download is the exception and reuses the evidence service's client/contact, engagement, classification, restriction, quarantine, and tenant checks.
+Client roles are intentionally excluded from organisation-wide REST reads, report preview/export handlers, and the internal application shell. Client-owned API keys receive `client_portal_required`; service credentials remain organisation-scoped integrations and are treated as organisation-wide for engagement ACL. Personal API keys inherit the owner's need-to-know membership. Client evidence preview/download is the exception and reuses the evidence service's client/contact, engagement, classification, restriction, quarantine, and tenant checks.
+
+Better Auth's admin plugin defaults every new user to `role=user`. Break-glass impersonation and admin APIs are limited to user ids in `BETTER_AUTH_ADMIN_USER_IDS`. Banned or `disabledAt` users lose their session on the next request.
 
 See [SECURITY.md](../SECURITY.md) for vulnerability reporting.

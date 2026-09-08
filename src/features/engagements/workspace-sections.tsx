@@ -128,6 +128,7 @@ export async function EngagementWorkspaceSection({
         <EvidenceSection
           engagementId={engagementId}
           organisationId={organisationId}
+          userId={userId}
           workspace={workspace}
         />
       );

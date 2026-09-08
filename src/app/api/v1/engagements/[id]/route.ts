@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { engagements } from "@/db/schema";
 import { apiReadContext } from "@/lib/api/authentication";
 import { apiError, apiNotFound } from "@/lib/api/responses";
+import { engagementVisibility } from "@/lib/permissions/access";
 
 export async function GET(
   request: Request,
@@ -23,6 +24,7 @@ export async function GET(
           eq(engagements.id, id),
           eq(engagements.organisationId, principal.organisationId),
           isNull(engagements.deletedAt),
+          engagementVisibility(principal, engagements.id),
         ),
       )
       .limit(1);

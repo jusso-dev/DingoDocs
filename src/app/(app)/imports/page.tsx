@@ -5,11 +5,12 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { importAdapterNames } from "@/lib/imports/adapters";
-import { requirePermission } from "@/lib/permissions/require";
+import { engagementVisibility } from "@/lib/permissions/access";
+import { requireInternalOrganisationContext } from "@/lib/permissions/require";
 import { previewScannerImportAction } from "@/server/actions/data-exchange";
 
 export default async function ImportsPage() {
-  const context = await requirePermission("finding:create");
+  const context = await requireInternalOrganisationContext();
   const rows = await db
     .select({
       id: engagements.id,
@@ -21,6 +22,7 @@ export default async function ImportsPage() {
       and(
         eq(engagements.organisationId, context.organisationId),
         isNull(engagements.deletedAt),
+        engagementVisibility(context, engagements.id),
       ),
     )
     .orderBy(asc(engagements.name));

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { requirePermission } from "@/lib/permissions/require";
+import { requireInternalOrganisationContext } from "@/lib/permissions/require";
 import { applyScannerImportAction } from "@/server/actions/data-exchange";
 import {
   ExchangeScopeError,
@@ -14,7 +14,7 @@ export default async function ImportPreviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const context = await requirePermission("finding:create");
+  const context = await requireInternalOrganisationContext();
   let preview: Awaited<ReturnType<typeof getImportPreview>>;
   try {
     preview = await getImportPreview(context, id);

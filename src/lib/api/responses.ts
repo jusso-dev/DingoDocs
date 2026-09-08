@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/session";
+import { EngagementAccessError } from "@/lib/permissions/access";
 import { PermissionDeniedError } from "@/lib/permissions/require";
 import { ApiAuthenticationError } from "@/lib/api/authentication";
 import { structuredLog } from "@/lib/observability/logger";
@@ -57,7 +58,8 @@ export function apiError(error: unknown, requestId?: string | null) {
   if (
     error instanceof ExchangeScopeError ||
     error instanceof WorkspaceScopeError ||
-    error instanceof ReportScopeError
+    error instanceof ReportScopeError ||
+    error instanceof EngagementAccessError
   )
     return NextResponse.json(
       {

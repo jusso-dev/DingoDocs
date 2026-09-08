@@ -27,7 +27,7 @@ export default async function AnalyticsPage({
 }) {
   const context = await requireInternalOrganisationContext();
   const filters = parseRiskAnalyticsFilters(await searchParams);
-  const data = await getRiskAnalytics(context.organisationId, filters);
+  const data = await getRiskAnalytics(context, filters);
   const metrics = [
     {
       label: "Filtered findings",

@@ -3,7 +3,16 @@ import { db } from "@/db";
 import { engagementMembers, organisationMembers } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { resolveActiveOrganisation } from "@/lib/auth/active-organisation";
-import { hasPermission, type Permission, type Role } from "./matrix";
+import { EngagementAccessError } from "./access";
+import {
+  canSeeAllEngagements,
+  effectiveRoles,
+  hasPermission,
+  isEngagementBoundPermission,
+  isOrganisationWideRole,
+  type Permission,
+  type Role,
+} from "./matrix";
 
 export class PermissionDeniedError extends Error {
   constructor(
@@ -57,14 +66,13 @@ export async function rolesForOperation(input: {
     )
     .limit(1);
 
-  const result: Role[] = membership[0] ? [membership[0].role as Role] : [];
+  let engagementRole: Role | undefined;
   if (
-    !membership[0] ||
-    membership[0].role === "client_user" ||
-    membership[0].role === "client_administrator"
-  )
-    return result;
-  if (input.engagementId) {
+    input.engagementId &&
+    membership[0] &&
+    membership[0].role !== "client_user" &&
+    membership[0].role !== "client_administrator"
+  ) {
     const engagementMembership = await db
       .select({ role: engagementMembers.role })
       .from(engagementMembers)
@@ -77,13 +85,47 @@ export async function rolesForOperation(input: {
         ),
       )
       .limit(1);
-    if (
-      engagementMembership[0] &&
-      !result.includes(engagementMembership[0].role as Role)
-    )
-      result.push(engagementMembership[0].role as Role);
+    engagementRole = engagementMembership[0]?.role as Role | undefined;
   }
-  return result;
+  return effectiveRoles({
+    organisationRole: membership[0]?.role as Role | undefined,
+    engagementRole,
+    engagementId: input.engagementId,
+  });
+}
+
+export async function assertEngagementAccess(input: {
+  userId: string;
+  organisationId: string;
+  engagementId: string;
+}) {
+  const roles = await rolesForOperation(input);
+  if (
+    !roles.length ||
+    roles.every(
+      (role) => role === "client_user" || role === "client_administrator",
+    )
+  )
+    throw new EngagementAccessError();
+  return roles;
+}
+
+export async function assertActorEngagementAccess(
+  actor: {
+    organisationId: string;
+    userId?: string;
+    role?: string | null;
+    serviceAccountId?: string | null;
+  },
+  engagementId: string,
+) {
+  if (canSeeAllEngagements(actor)) return;
+  if (!actor.userId) throw new EngagementAccessError();
+  await assertEngagementAccess({
+    userId: actor.userId,
+    organisationId: actor.organisationId,
+    engagementId,
+  });
 }
 
 export async function requirePermission(
@@ -113,6 +155,16 @@ export async function requireActorPermission(
     throw new PermissionDeniedError(
       permission,
       `roles [${operationRoles.join(", ") || "none"}] are not permitted`,
+    );
+  }
+  if (
+    isEngagementBoundPermission(permission) &&
+    !input?.engagementId &&
+    !operationRoles.some((role) => isOrganisationWideRole(role))
+  ) {
+    throw new PermissionDeniedError(
+      permission,
+      "engagement context is required",
     );
   }
   return operationRoles;

@@ -75,6 +75,88 @@ export function hasPermission(role: Role, permission: Permission) {
   return permissionMatrix[role].includes(permission);
 }
 
+export const organisationWideRoles = [
+  "platform_administrator",
+  "organisation_owner",
+  "organisation_administrator",
+] as const satisfies readonly Role[];
+
+export const roleRank: Record<Role, number> = {
+  platform_administrator: 0,
+  organisation_owner: 1,
+  organisation_administrator: 2,
+  engagement_manager: 3,
+  lead_consultant: 4,
+  consultant: 5,
+  reviewer: 6,
+  client_administrator: 7,
+  client_user: 8,
+  read_only: 9,
+};
+
+export const engagementBoundPermissions = [
+  "engagement:edit",
+  "engagement:manage_members",
+  "engagement:archive",
+  "scope:manage",
+  "evidence:upload",
+  "evidence:view_restricted",
+  "finding:create",
+  "finding:approve",
+  "report:publish",
+  "data:export",
+] as const satisfies readonly Permission[];
+
+export function isOrganisationWideRole(role: string): role is Role {
+  return (organisationWideRoles as readonly string[]).includes(role);
+}
+
+export function isEngagementBoundPermission(
+  permission: Permission,
+): permission is (typeof engagementBoundPermissions)[number] {
+  return (engagementBoundPermissions as readonly Permission[]).includes(
+    permission,
+  );
+}
+
+export function canSeeAllEngagements(actor: {
+  role?: string | null;
+  serviceAccountId?: string | null;
+}) {
+  if (actor.serviceAccountId) return true;
+  return Boolean(actor.role && isOrganisationWideRole(actor.role));
+}
+
+export function canGrantRole(actorRole: Role, targetRole: Role) {
+  return roleRank[targetRole] >= roleRank[actorRole];
+}
+
+export function grantableRoles(actorRole: Role) {
+  return roles.filter((role) => canGrantRole(actorRole, role));
+}
+
+export function effectiveRoles(input: {
+  organisationRole?: Role;
+  engagementRole?: Role;
+  engagementId?: string;
+}): Role[] {
+  const organisationRole = input.organisationRole;
+  if (!organisationRole) return [];
+  if (
+    organisationRole === "client_user" ||
+    organisationRole === "client_administrator"
+  )
+    return [organisationRole];
+  if (!input.engagementId) return [organisationRole];
+  if (isOrganisationWideRole(organisationRole)) {
+    if (input.engagementRole && input.engagementRole !== organisationRole)
+      return [organisationRole, input.engagementRole];
+    return [organisationRole];
+  }
+  if (!input.engagementRole) return [];
+  return [input.engagementRole];
+}
+
 export function assertPermissionMatrix() {
   for (const role of roles) {
     if (!permissionMatrix[role])
@@ -86,4 +168,15 @@ export function assertPermissionMatrix() {
     throw new Error("Consultants must not publish reports");
   if (hasPermission("reviewer", "finding:create"))
     throw new Error("Reviewer independence guard failed");
+  if (canGrantRole("organisation_administrator", "organisation_owner"))
+    throw new Error("Administrators must not grant owner");
+  if (canGrantRole("organisation_owner", "platform_administrator"))
+    throw new Error("Owners must not grant platform administrator");
+  if (
+    effectiveRoles({
+      organisationRole: "consultant",
+      engagementId: "engagement",
+    }).length
+  )
+    throw new Error("Consultants must not inherit unassigned engagements");
 }

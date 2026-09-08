@@ -41,6 +41,7 @@ async function handleDownload(context: { params: Promise<{ id: string }> }) {
     organisationId: organisation.organisationId,
     engagementId: locator.engagementId,
   });
+  if (!roles.length) throw new EvidenceScopeError();
   const actor = await scopedEvidenceActor({
     organisationId: organisation.organisationId,
     userId: organisation.userId,

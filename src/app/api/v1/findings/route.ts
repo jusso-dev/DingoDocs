@@ -6,6 +6,8 @@ import { findings } from "@/db/schema";
 import { createFindingInput } from "@/lib/api/finding-input";
 import { apiReadContext, apiWriteContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { engagementVisibility } from "@/lib/permissions/access";
+import { assertActorEngagementAccess } from "@/lib/permissions/require";
 import { createFindingDraft } from "@/server/services/findings";
 
 const querySchema = z.object({
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
         ? eq(findings.engagementId, query.engagementId)
         : undefined,
       query.status ? eq(findings.status, query.status) : undefined,
+      engagementVisibility(context, findings.engagementId),
       query.severity ? eq(findings.severity, query.severity) : undefined,
     );
     const column =
@@ -88,14 +91,16 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id");
   try {
+    const input = createFindingInput.parse(await request.json());
     const context = await apiWriteContext(
       request,
       "findings:write",
       "finding:create",
+      { engagementId: input.engagementId },
     );
     if (!context.userId)
       throw new Error("API key does not have an attributable owner");
-    const input = createFindingInput.parse(await request.json());
+    await assertActorEngagementAccess(context, input.engagementId);
     const created = await createFindingDraft(
       { organisationId: context.organisationId, userId: context.userId },
       {

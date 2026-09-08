@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { notes } from "@/db/schema";
 import { apiReadContext, apiWriteContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { assertActorEngagementAccess } from "@/lib/permissions/require";
 import { createWorkspaceNote } from "@/server/services/engagement-workspace";
 import { visibleToAuthor } from "@/lib/permissions/visibility";
 
@@ -25,6 +26,7 @@ export async function GET(
     const { id } = await context.params;
     z.string().uuid().parse(id);
     const principal = await apiReadContext(request, "engagements:read");
+    await assertActorEngagementAccess(principal, id);
     const rows = await db
       .select()
       .from(notes)

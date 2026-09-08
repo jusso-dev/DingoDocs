@@ -44,6 +44,13 @@ export const auth = betterAuth({
     },
   },
   databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => ({
+          data: { ...user, role: "user" },
+        }),
+      },
+    },
     session: {
       create: {
         after: async (session, context) => {
@@ -164,7 +171,14 @@ export const auth = betterAuth({
       ? [genericOAuth({ config: providerConfiguration.oauthProviders })]
       : []),
     oAuthProxy(),
-    admin(),
+    admin({
+      defaultRole: "user",
+      adminRoles: ["admin"],
+      adminUserIds: (process.env.BETTER_AUTH_ADMIN_USER_IDS ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    }),
   ],
 });
 

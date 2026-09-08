@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiError } from "@/lib/api/responses";
 import {
+  assertEngagementAccess,
   requireInternalOrganisationContext,
   requirePermission,
 } from "@/lib/permissions/require";
@@ -24,6 +25,11 @@ export async function GET(
     z.string().uuid().parse(id);
     const organisation = await requireInternalOrganisationContext();
     const workspace = await getReportWorkspace(organisation.organisationId, id);
+    await assertEngagementAccess({
+      userId: organisation.userId,
+      organisationId: organisation.organisationId,
+      engagementId: workspace.report.engagementId,
+    });
     await requirePermission("data:export", {
       engagementId: workspace.report.engagementId,
     });

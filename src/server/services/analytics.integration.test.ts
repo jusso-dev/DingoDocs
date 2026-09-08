@@ -151,7 +151,7 @@ run("risk analytics with PostgreSQL", () => {
 
   it("aggregates all workflow states without crossing tenant boundaries", async () => {
     const result = await modules.getRiskAnalytics(
-      ids.orgA,
+      { organisationId: ids.orgA, role: "organisation_owner" },
       { period: "all", severity: "all", status: "all" },
       now,
     );
@@ -187,7 +187,7 @@ run("risk analytics with PostgreSQL", () => {
 
   it("applies time, workflow, severity, and client filters", async () => {
     const recentOpen = await modules.getRiskAnalytics(
-      ids.orgA,
+      { organisationId: ids.orgA, role: "organisation_owner" },
       modules.parseRiskAnalyticsFilters({ period: "180" }),
       now,
     );
@@ -196,7 +196,7 @@ run("risk analytics with PostgreSQL", () => {
     ]);
 
     const client = await modules.getRiskAnalytics(
-      ids.orgA,
+      { organisationId: ids.orgA, role: "organisation_owner" },
       {
         period: "all",
         severity: "high",

@@ -1,13 +1,14 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { db } from "@/db";
 import {
   assetEvidence,
   auditEvents,
   backgroundJobs,
+  engagementMembers,
   engagements,
   evidence,
   evidenceAnnotations,
@@ -16,7 +17,11 @@ import {
   portalEngagementQuery,
   requirePortalEngagement,
 } from "@/lib/permissions/portal";
-import { hasPermission, type Role } from "@/lib/permissions/matrix";
+import {
+  hasPermission,
+  isOrganisationWideRole,
+  type Role,
+} from "@/lib/permissions/matrix";
 import {
   validateContentSignature,
   validateUpload,
@@ -114,6 +119,14 @@ export async function uploadEvidence(
     .limit(1);
   if (!engagement) throw new EvidenceScopeError();
   assertActorScope(actor, engagement.clientId, input.engagementId);
+  if (
+    input.classification === "client_visible" &&
+    !actor.clientIds &&
+    !actor.canViewRestricted
+  )
+    throw new EvidenceScopeError(
+      "Client-visible evidence requires restricted-evidence permission",
+    );
 
   const [duplicate] = await db
     .select({ id: evidence.id })
@@ -305,7 +318,27 @@ export async function scopedEvidenceActor(input: {
   const internalRole = input.roles.some(
     (role) => role !== "client_administrator" && role !== "client_user",
   );
-  if (internalRole) return actor;
+  if (internalRole) {
+    const organisationWide = input.roles.some((role) =>
+      isOrganisationWideRole(role),
+    );
+    if (!organisationWide) {
+      const grants = await db
+        .select({
+          engagementId: engagementMembers.engagementId,
+        })
+        .from(engagementMembers)
+        .where(
+          and(
+            eq(engagementMembers.organisationId, input.organisationId),
+            eq(engagementMembers.userId, input.userId),
+            isNull(engagementMembers.deletedAt),
+          ),
+        );
+      actor.engagementIds = grants.map((grant) => grant.engagementId);
+    }
+    return actor;
+  }
   const grants = await portalEngagementQuery(input);
   actor.clientIds = [...new Set(grants.map((grant) => grant.clientId))];
   actor.engagementIds = grants.map((grant) => grant.id);
@@ -539,7 +572,7 @@ export async function scanEvidenceJob(
 }
 
 export async function listEngagementEvidence(
-  organisationId: string,
+  actor: Pick<EvidenceActor, "organisationId" | "userId" | "canViewRestricted">,
   engagementId: string,
 ) {
   return db
@@ -547,9 +580,16 @@ export async function listEngagementEvidence(
     .from(evidence)
     .where(
       and(
-        eq(evidence.organisationId, organisationId),
+        eq(evidence.organisationId, actor.organisationId),
         eq(evidence.engagementId, engagementId),
         isNull(evidence.deletedAt),
+        actor.canViewRestricted
+          ? undefined
+          : or(
+              ne(evidence.classification, "restricted"),
+              eq(evidence.uploadedBy, actor.userId),
+              sql`coalesce(${evidence.restrictions}->'userIds','[]'::jsonb) ? ${actor.userId}`,
+            ),
       ),
     )
     .orderBy(desc(evidence.createdAt));

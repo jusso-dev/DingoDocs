@@ -18,7 +18,15 @@ describe("MCP JSON-RPC protocol", () => {
     const response = await handleMcpJsonRpc(
       { jsonrpc: "2.0", id: 1, method: "tools/list" },
       client(),
-      { scopes: ["engagements:read"] },
+      {
+        scopes: [
+          "engagements:read",
+          "engagements:write",
+          "findings:write",
+          "notes:write",
+          "imports:write",
+        ],
+      },
     );
     expect(response?.result).toMatchObject({
       tools: expect.arrayContaining([
@@ -27,6 +35,16 @@ describe("MCP JSON-RPC protocol", () => {
         expect.objectContaining({ name: "add_timeline_entry" }),
       ]),
     });
+    const limited = await handleMcpJsonRpc(
+      { jsonrpc: "2.0", id: 2, method: "tools/list" },
+      client(),
+      { scopes: ["engagements:read"] },
+    );
+    const names = (
+      limited?.result as { tools: Array<{ name: string }> } | undefined
+    )?.tools.map((tool) => tool.name);
+    expect(names).toContain("list_engagements");
+    expect(names).not.toContain("ingest_scanner_results");
     expect(mcpTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
         "list_engagements",

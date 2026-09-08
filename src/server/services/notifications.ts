@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import { z } from "zod";
 import { db } from "@/db";
@@ -10,6 +10,7 @@ import {
   notificationChannels,
   notificationDeliveries,
   notifications,
+  organisationMembers,
 } from "@/db/schema";
 import {
   decryptIntegrationSecret,
@@ -47,6 +48,21 @@ export async function createNotificationChannel(
   },
 ) {
   validateConfiguration(input.provider, input.configuration);
+  if (input.provider === "in_app" && input.configuration.userId) {
+    const [member] = await db
+      .select({ id: organisationMembers.id })
+      .from(organisationMembers)
+      .where(
+        and(
+          eq(organisationMembers.organisationId, actor.organisationId),
+          eq(organisationMembers.userId, input.configuration.userId),
+          isNull(organisationMembers.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!member)
+      throw new Error("in-app notifications require an organisation member");
+  }
   const [channel] = await db
     .insert(notificationChannels)
     .values({
@@ -187,6 +203,21 @@ async function providerSend(
   },
 ) {
   if (provider === "in_app") {
+    if (!configuration.userId)
+      throw new Error("in-app notifications require a member");
+    const [member] = await db
+      .select({ id: organisationMembers.id })
+      .from(organisationMembers)
+      .where(
+        and(
+          eq(organisationMembers.organisationId, message.organisationId),
+          eq(organisationMembers.userId, configuration.userId),
+          isNull(organisationMembers.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!member)
+      throw new Error("in-app notifications require an organisation member");
     await db.insert(notifications).values({
       organisationId: message.organisationId,
       userId: configuration.userId,

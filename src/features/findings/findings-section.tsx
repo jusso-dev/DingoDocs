@@ -14,7 +14,11 @@ import {
   updateFindingFromTemplateAction,
   updateFindingNarrativeAction,
 } from "@/server/actions/findings";
-import { listEngagementEvidence } from "@/server/services/evidence";
+import { rolesForOperation } from "@/lib/permissions/require";
+import {
+  listEngagementEvidence,
+  scopedEvidenceActor,
+} from "@/server/services/evidence";
 import type { getEngagementWorkspace } from "@/server/services/engagement-workspace";
 import {
   compareFindingTemplate,
@@ -37,10 +41,20 @@ export async function FindingsSection({
   userId: string;
   workspace: Workspace;
 }) {
+  const roles = await rolesForOperation({
+    userId,
+    organisationId,
+    engagementId,
+  });
+  const actor = await scopedEvidenceActor({
+    organisationId,
+    userId,
+    roles,
+  });
   const [rows, templates, evidence] = await Promise.all([
     getEngagementFindings(organisationId, engagementId, userId),
     searchFindingTemplates(organisationId, "", true),
-    listEngagementEvidence(organisationId, engagementId),
+    listEngagementEvidence(actor, engagementId),
   ]);
   const comparisons = new Map(
     await Promise.all(

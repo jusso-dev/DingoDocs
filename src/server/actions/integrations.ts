@@ -12,7 +12,10 @@ import {
   aiProviders,
   notificationProviders,
 } from "@/lib/integrations/constants";
-import { requirePermission } from "@/lib/permissions/require";
+import {
+  requireInternalOrganisationContext,
+  requirePermission,
+} from "@/lib/permissions/require";
 import { configureAiProvider, requestAiDraft } from "@/server/services/ai";
 import { createNotificationChannel } from "@/server/services/notifications";
 import { createWebhook, rotateWebhookSecret } from "@/server/services/webhooks";
@@ -199,7 +202,7 @@ export async function requestAiDraftAction(
   formData: FormData,
 ): Promise<SecretActionState> {
   try {
-    const actor = await requirePermission("finding:create");
+    const actor = await requireInternalOrganisationContext();
     const result = await requestAiDraft(actor, {
       purpose: z.string().trim().min(2).max(100).parse(formData.get("purpose")),
       prompt: z

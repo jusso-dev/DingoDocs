@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
-import { requireOrganisationContext } from "@/lib/permissions/require";
+import { EngagementAccessError } from "@/lib/permissions/access";
+import {
+  assertEngagementAccess,
+  requireOrganisationContext,
+} from "@/lib/permissions/require";
 import { formatDateTime } from "@/lib/time-zone";
 import {
   createReportRevisionAction,
@@ -27,8 +31,17 @@ export default async function ReportPage({
   let workspace: Awaited<ReturnType<typeof getReportWorkspace>>;
   try {
     workspace = await getReportWorkspace(context.organisationId, id);
+    await assertEngagementAccess({
+      userId: context.userId,
+      organisationId: context.organisationId,
+      engagementId: workspace.report.engagementId,
+    });
   } catch (error) {
-    if (error instanceof ReportScopeError) notFound();
+    if (
+      error instanceof ReportScopeError ||
+      error instanceof EngagementAccessError
+    )
+      notFound();
     throw error;
   }
   const { report, current, versions, transitions } = workspace;

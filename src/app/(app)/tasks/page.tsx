@@ -5,6 +5,7 @@ import { tasks } from "@/db/schema";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
+import { engagementVisibility } from "@/lib/permissions/access";
 import { requireOrganisationContext } from "@/lib/permissions/require";
 import { formatDateTime } from "@/lib/time-zone";
 
@@ -17,6 +18,7 @@ export default async function TasksPage() {
       and(
         eq(tasks.organisationId, context.organisationId),
         inArray(tasks.status, ["backlog", "todo", "in_progress", "blocked"]),
+        engagementVisibility(context, tasks.engagementId),
       ),
     )
     .orderBy(asc(tasks.dueAt))

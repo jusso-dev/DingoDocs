@@ -2,7 +2,11 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { hasPermission, type Role } from "@/lib/permissions/matrix";
+import {
+  canSeeAllEngagements,
+  hasPermission,
+  type Role,
+} from "@/lib/permissions/matrix";
 import { listPortalEngagements } from "./client-portal";
 
 export type SearchActor = {
@@ -33,19 +37,33 @@ export async function globalSearch(
     actor.role as Role,
     "evidence:view_restricted",
   );
+  const assigned = (
+    engagementColumn:
+      | "e.id"
+      | "f.engagement_id"
+      | "a.engagement_id"
+      | "s.engagement_id"
+      | "ev.engagement_id"
+      | "r.engagement_id"
+      | "n.engagement_id"
+      | "t.engagement_id",
+  ) =>
+    canSeeAllEngagements(actor)
+      ? sql`true`
+      : sql`exists (select 1 from engagement_members em where em.organisation_id = ${actor.organisationId} and em.user_id = ${actor.userId} and em.deleted_at is null and em.engagement_id = ${sql.raw(engagementColumn)})`;
   const result = await db.execute<GlobalSearchResult>(sql`
     with q as (select websearch_to_tsquery('simple', ${query}) query), results as (
       select 'client' type, c.id::text id, c.name title, coalesce(c.industry,'Client') subtitle, '/clients/'||c.id::text href, ts_rank(to_tsvector('simple', coalesce(c.name,'')||' '||coalesce(c.legal_name,'')||' '||coalesce(c.industry,'')), q.query) rank from clients c, q where c.organisation_id=${actor.organisationId} and c.deleted_at is null and to_tsvector('simple', coalesce(c.name,'')||' '||coalesce(c.legal_name,'')||' '||coalesce(c.industry,'')) @@ q.query
-      union all select 'engagement', e.id::text, e.name, e.reference||' · '||e.type, '/engagements/'||e.id::text, ts_rank(to_tsvector('simple', coalesce(e.name,'')||' '||coalesce(e.reference,'')||' '||coalesce(e.objectives,'')), q.query) from engagements e,q where e.organisation_id=${actor.organisationId} and e.deleted_at is null and to_tsvector('simple', coalesce(e.name,'')||' '||coalesce(e.reference,'')||' '||coalesce(e.objectives,'')) @@ q.query
-      union all select 'finding', f.id::text, f.identifier||' · '||f.title, f.severity::text||' · '||f.status::text, '/engagements/'||f.engagement_id::text||'?view=findings', ts_rank(to_tsvector('simple', coalesce(f.title,'')||' '||coalesce(f.identifier,'')||' '||coalesce(f.executive_summary,'')||' '||coalesce(f.technical_detail,'')||' '||coalesce(f.remediation,'')), q.query) from findings f,q where f.organisation_id=${actor.organisationId} and f.deleted_at is null and to_tsvector('simple', coalesce(f.title,'')||' '||coalesce(f.identifier,'')||' '||coalesce(f.executive_summary,'')||' '||coalesce(f.technical_detail,'')||' '||coalesce(f.remediation,'')) @@ q.query
+      union all select 'engagement', e.id::text, e.name, e.reference||' · '||e.type, '/engagements/'||e.id::text, ts_rank(to_tsvector('simple', coalesce(e.name,'')||' '||coalesce(e.reference,'')||' '||coalesce(e.objectives,'')), q.query) from engagements e,q where e.organisation_id=${actor.organisationId} and e.deleted_at is null and ${assigned("e.id")} and to_tsvector('simple', coalesce(e.name,'')||' '||coalesce(e.reference,'')||' '||coalesce(e.objectives,'')) @@ q.query
+      union all select 'finding', f.id::text, f.identifier||' · '||f.title, f.severity::text||' · '||f.status::text, '/engagements/'||f.engagement_id::text||'?view=findings', ts_rank(to_tsvector('simple', coalesce(f.title,'')||' '||coalesce(f.identifier,'')||' '||coalesce(f.executive_summary,'')||' '||coalesce(f.technical_detail,'')||' '||coalesce(f.remediation,'')), q.query) from findings f,q where f.organisation_id=${actor.organisationId} and f.deleted_at is null and ${assigned("f.engagement_id")} and to_tsvector('simple', coalesce(f.title,'')||' '||coalesce(f.identifier,'')||' '||coalesce(f.executive_summary,'')||' '||coalesce(f.technical_detail,'')||' '||coalesce(f.remediation,'')) @@ q.query
       union all select 'template', t.id::text, t.title, t.stable_key, '/findings-library', ts_rank(to_tsvector('simple', coalesce(t.title,'')||' '||coalesce(t.summary,'')||' '||coalesce(t.technical_description,'')||' '||array_to_string(t.tags,' ')), q.query) from finding_templates t,q where t.organisation_id=${actor.organisationId} and to_tsvector('simple', coalesce(t.title,'')||' '||coalesce(t.summary,'')||' '||coalesce(t.technical_description,'')||' '||array_to_string(t.tags,' ')) @@ q.query
       union all select 'runbook', rb.id::text, rb.name, rb.status||' · v'||rb.version::text, '/runbooks', ts_rank(to_tsvector('simple', coalesce(rb.name,'')||' '||coalesce(rb.description,'')||' '||array_to_string(rb.assessment_types,' ')||' '||array_to_string(rb.tags,' ')), q.query) from runbook_templates rb,q where rb.organisation_id=${actor.organisationId} and rb.archived_at is null and to_tsvector('simple', coalesce(rb.name,'')||' '||coalesce(rb.description,'')||' '||array_to_string(rb.assessment_types,' ')||' '||array_to_string(rb.tags,' ')) @@ q.query
-      union all select 'asset', a.id::text, a.name, a.identifier, '/engagements/'||a.engagement_id::text||'?view=assets', ts_rank(to_tsvector('simple', coalesce(a.name,'')||' '||coalesce(a.identifier,'')||' '||coalesce(a.notes,'')), q.query) from assets a,q where a.organisation_id=${actor.organisationId} and a.deleted_at is null and to_tsvector('simple', coalesce(a.name,'')||' '||coalesce(a.identifier,'')||' '||coalesce(a.notes,'')) @@ q.query
-      union all select 'scope', s.id::text, s.name, s.value, '/engagements/'||s.engagement_id::text||'?view=scope', ts_rank(to_tsvector('simple', coalesce(s.name,'')||' '||coalesce(s.value,'')||' '||coalesce(s.notes,'')), q.query) from scope_items s,q where s.organisation_id=${actor.organisationId} and to_tsvector('simple', coalesce(s.name,'')||' '||coalesce(s.value,'')||' '||coalesce(s.notes,'')) @@ q.query
-      union all select 'evidence', ev.id::text, ev.original_filename, ev.media_type, '/api/v1/evidence/'||ev.id::text||'/preview', ts_rank(to_tsvector('simple', coalesce(ev.original_filename,'')||' '||coalesce(ev.media_type,'')||' '||coalesce(ev.sha256,'')), q.query) from evidence ev,q where ev.organisation_id=${actor.organisationId} and ev.deleted_at is null and (${canViewRestricted} or ev.classification <> 'restricted' or ev.uploaded_by=${actor.userId} or coalesce(ev.restrictions->'userIds','[]'::jsonb) ? ${actor.userId}) and to_tsvector('simple', coalesce(ev.original_filename,'')||' '||coalesce(ev.media_type,'')||' '||coalesce(ev.sha256,'')) @@ q.query
-      union all select 'report', r.id::text, r.title, r.status::text, '/reports/'||r.id::text, ts_rank(to_tsvector('simple', coalesce(r.title,'')), q.query) from reports r,q where r.organisation_id=${actor.organisationId} and to_tsvector('simple',coalesce(r.title,'')) @@ q.query
-      union all select 'note', n.id::text, n.title, n.kind, '/engagements/'||n.engagement_id::text||'?view=notes', ts_rank(to_tsvector('simple', coalesce(n.title,'')||' '||coalesce(n.content::text,'')), q.query) from notes n,q where n.organisation_id=${actor.organisationId} and n.deleted_at is null and (n.visibility <> 'private' or n.author_id=${actor.userId}) and to_tsvector('simple', coalesce(n.title,'')||' '||coalesce(n.content::text,'')) @@ q.query
-      union all select 'task', t.id::text, t.title, t.status::text, '/tasks', ts_rank(to_tsvector('simple', coalesce(t.title,'')||' '||coalesce(t.description,'')), q.query) from tasks t,q where t.organisation_id=${actor.organisationId} and to_tsvector('simple',coalesce(t.title,'')||' '||coalesce(t.description,'')) @@ q.query
+      union all select 'asset', a.id::text, a.name, a.identifier, '/engagements/'||a.engagement_id::text||'?view=assets', ts_rank(to_tsvector('simple', coalesce(a.name,'')||' '||coalesce(a.identifier,'')||' '||coalesce(a.notes,'')), q.query) from assets a,q where a.organisation_id=${actor.organisationId} and a.deleted_at is null and ${assigned("a.engagement_id")} and to_tsvector('simple', coalesce(a.name,'')||' '||coalesce(a.identifier,'')||' '||coalesce(a.notes,'')) @@ q.query
+      union all select 'scope', s.id::text, s.name, s.value, '/engagements/'||s.engagement_id::text||'?view=scope', ts_rank(to_tsvector('simple', coalesce(s.name,'')||' '||coalesce(s.value,'')||' '||coalesce(s.notes,'')), q.query) from scope_items s,q where s.organisation_id=${actor.organisationId} and ${assigned("s.engagement_id")} and to_tsvector('simple', coalesce(s.name,'')||' '||coalesce(s.value,'')||' '||coalesce(s.notes,'')) @@ q.query
+      union all select 'evidence', ev.id::text, ev.original_filename, ev.media_type, '/api/v1/evidence/'||ev.id::text||'/preview', ts_rank(to_tsvector('simple', coalesce(ev.original_filename,'')||' '||coalesce(ev.media_type,'')||' '||coalesce(ev.sha256,'')), q.query) from evidence ev,q where ev.organisation_id=${actor.organisationId} and ev.deleted_at is null and ${assigned("ev.engagement_id")} and (${canViewRestricted} or ev.classification <> 'restricted' or ev.uploaded_by=${actor.userId} or coalesce(ev.restrictions->'userIds','[]'::jsonb) ? ${actor.userId}) and to_tsvector('simple', coalesce(ev.original_filename,'')||' '||coalesce(ev.media_type,'')||' '||coalesce(ev.sha256,'')) @@ q.query
+      union all select 'report', r.id::text, r.title, r.status::text, '/reports/'||r.id::text, ts_rank(to_tsvector('simple', coalesce(r.title,'')), q.query) from reports r,q where r.organisation_id=${actor.organisationId} and ${assigned("r.engagement_id")} and to_tsvector('simple',coalesce(r.title,'')) @@ q.query
+      union all select 'note', n.id::text, n.title, n.kind, '/engagements/'||n.engagement_id::text||'?view=notes', ts_rank(to_tsvector('simple', coalesce(n.title,'')||' '||coalesce(n.content::text,'')), q.query) from notes n,q where n.organisation_id=${actor.organisationId} and n.deleted_at is null and ${assigned("n.engagement_id")} and (n.visibility <> 'private' or n.author_id=${actor.userId}) and to_tsvector('simple', coalesce(n.title,'')||' '||coalesce(n.content::text,'')) @@ q.query
+      union all select 'task', t.id::text, t.title, t.status::text, '/tasks', ts_rank(to_tsvector('simple', coalesce(t.title,'')||' '||coalesce(t.description,'')), q.query) from tasks t,q where t.organisation_id=${actor.organisationId} and ${assigned("t.engagement_id")} and to_tsvector('simple',coalesce(t.title,'')||' '||coalesce(t.description,'')) @@ q.query
       union all select 'person', u.id::text, u.name, u.email, '/team', ts_rank(to_tsvector('simple', coalesce(u.name,'')||' '||coalesce(u.email,'')), q.query) from organisation_members m join users u on u.id=m.user_id,q where m.organisation_id=${actor.organisationId} and m.deleted_at is null and to_tsvector('simple',coalesce(u.name,'')||' '||coalesce(u.email,'')) @@ q.query
     ) select * from results order by rank desc, title asc limit ${capped}
   `);

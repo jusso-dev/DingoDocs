@@ -6,6 +6,7 @@ import { engagements, reportTemplates, reports } from "@/db/schema";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
+import { engagementVisibility } from "@/lib/permissions/access";
 import { requireOrganisationContext } from "@/lib/permissions/require";
 import { formatDateTime } from "@/lib/time-zone";
 import { createReportAction } from "@/server/actions/reports";
@@ -16,7 +17,12 @@ export default async function ReportsPage() {
     db
       .select()
       .from(reports)
-      .where(eq(reports.organisationId, context.organisationId))
+      .where(
+        and(
+          eq(reports.organisationId, context.organisationId),
+          engagementVisibility(context, reports.engagementId),
+        ),
+      )
       .orderBy(desc(reports.updatedAt))
       .limit(100),
     db
@@ -30,6 +36,7 @@ export default async function ReportsPage() {
         and(
           eq(engagements.organisationId, context.organisationId),
           isNull(engagements.deletedAt),
+          engagementVisibility(context, engagements.id),
         ),
       )
       .orderBy(desc(engagements.createdAt)),

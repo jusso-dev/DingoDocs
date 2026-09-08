@@ -1,9 +1,15 @@
+import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { db } from "@/db";
+import { users } from "@/db/schema";
 import { auth } from "./auth";
 
 export async function getSession() {
-  return auth.api.getSession({ headers: await headers() });
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return null;
+  if (await isUserInactive(session.user.id)) return null;
+  return session;
 }
 
 export async function requireSession() {
@@ -23,4 +29,20 @@ export class AuthenticationRequiredError extends Error {
     super("Authentication required");
     this.name = "AuthenticationRequiredError";
   }
+}
+
+async function isUserInactive(userId: string) {
+  const [user] = await db
+    .select({
+      banned: users.banned,
+      banExpires: users.banExpires,
+      disabledAt: users.disabledAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!user) return true;
+  if (user.disabledAt) return true;
+  if (!user.banned) return false;
+  return !user.banExpires || user.banExpires.getTime() > Date.now();
 }

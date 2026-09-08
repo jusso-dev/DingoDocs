@@ -152,18 +152,20 @@ export async function uploadRemediationEvidenceAction(
 }
 
 export async function scheduleRetestAction(formData: FormData) {
-  const context = await requirePermission("finding:approve");
+  const engagementId = id.parse(formData.get("engagementId"));
+  const context = await requirePermission("finding:approve", { engagementId });
   const scheduledFor = z.string().parse(formData.get("scheduledFor"));
   await scheduleRetest(context, {
     attemptId: id.parse(formData.get("attemptId")),
     assignedTo: id.parse(formData.get("assignedTo")),
     scheduledFor: parseDateTimeInTimeZone(scheduledFor, context.timeZone),
   });
-  revalidatePath(`/engagements/${id.parse(formData.get("engagementId"))}`);
+  revalidatePath(`/engagements/${engagementId}`);
 }
 
 export async function addRetestNoteAction(formData: FormData) {
-  const context = await requirePermission("finding:approve");
+  const engagementId = id.parse(formData.get("engagementId"));
+  const context = await requirePermission("finding:approve", { engagementId });
   await addRetestNote(context, {
     attemptId: id.parse(formData.get("attemptId")),
     body: text.parse(formData.get("body")),
@@ -171,20 +173,22 @@ export async function addRetestNoteAction(formData: FormData) {
       .enum(["internal", "client"])
       .parse(formData.get("visibility")),
   });
-  revalidatePath(`/engagements/${id.parse(formData.get("engagementId"))}`);
+  revalidatePath(`/engagements/${engagementId}`);
 }
 
 export async function attachRetestEvidenceAction(formData: FormData) {
-  const context = await requirePermission("finding:approve");
+  const engagementId = id.parse(formData.get("engagementId"));
+  const context = await requirePermission("finding:approve", { engagementId });
   await attachRetestEvidence(context, {
     attemptId: id.parse(formData.get("attemptId")),
     evidenceId: id.parse(formData.get("evidenceId")),
   });
-  revalidatePath(`/engagements/${id.parse(formData.get("engagementId"))}`);
+  revalidatePath(`/engagements/${engagementId}`);
 }
 
 export async function completeRetestAction(formData: FormData) {
-  const context = await requirePermission("finding:approve");
+  const engagementId = id.parse(formData.get("engagementId"));
+  const context = await requirePermission("finding:approve", { engagementId });
   await completeRetest(context, {
     attemptId: id.parse(formData.get("attemptId")),
     outcome: z
@@ -206,7 +210,7 @@ export async function completeRetestAction(formData: FormData) {
       summary: text.parse(formData.get("comparison")),
     },
   });
-  revalidatePath(`/engagements/${id.parse(formData.get("engagementId"))}`);
+  revalidatePath(`/engagements/${engagementId}`);
 }
 
 export async function grantPortalAccessAction(

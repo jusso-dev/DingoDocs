@@ -1,8 +1,12 @@
 import { Download, FileText, ImageIcon, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
+import { rolesForOperation } from "@/lib/permissions/require";
 import { createEvidenceAnnotationAction } from "@/server/actions/evidence";
-import { listEngagementEvidence } from "@/server/services/evidence";
+import {
+  listEngagementEvidence,
+  scopedEvidenceActor,
+} from "@/server/services/evidence";
 import type { getEngagementWorkspace } from "@/server/services/engagement-workspace";
 import { EvidenceUploadZone } from "./evidence-upload-zone";
 
@@ -13,13 +17,25 @@ type Workspace = NonNullable<
 export async function EvidenceSection({
   engagementId,
   organisationId,
+  userId,
   workspace,
 }: {
   engagementId: string;
   organisationId: string;
+  userId: string;
   workspace: Workspace;
 }) {
-  const rows = await listEngagementEvidence(organisationId, engagementId);
+  const roles = await rolesForOperation({
+    userId,
+    organisationId,
+    engagementId,
+  });
+  const actor = await scopedEvidenceActor({
+    organisationId,
+    userId,
+    roles,
+  });
+  const rows = await listEngagementEvidence(actor, engagementId);
   return (
     <div className="space-y-6">
       <EvidenceUploadZone

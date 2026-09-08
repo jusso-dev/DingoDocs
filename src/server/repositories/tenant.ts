@@ -2,13 +2,19 @@ import { and, eq, isNull, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import { clients, engagements } from "@/db/schema";
+import {
+  engagementVisibility,
+  type AccessActor,
+} from "@/lib/permissions/access";
 
 export type TenantScope = Readonly<{ organisationId: string }>;
+export type EngagementAccessScope = TenantScope &
+  Pick<AccessActor, "userId" | "role" | "serviceAccountId">;
 
 export function tenantWhere(
   scope: TenantScope,
   organisationColumn: AnyPgColumn,
-  ...conditions: SQL[]
+  ...conditions: Array<SQL | undefined>
 ) {
   return and(eq(organisationColumn, scope.organisationId), ...conditions);
 }
@@ -39,7 +45,7 @@ export async function getClient(scope: TenantScope, id: string) {
   return rows[0] ?? null;
 }
 
-export async function listEngagements(scope: TenantScope) {
+export async function listEngagements(scope: EngagementAccessScope) {
   return db
     .select()
     .from(engagements)
@@ -48,12 +54,13 @@ export async function listEngagements(scope: TenantScope) {
         scope,
         engagements.organisationId,
         isNull(engagements.deletedAt),
+        engagementVisibility(scope, engagements.id),
       ),
     )
     .orderBy(engagements.startDate);
 }
 
-export async function getEngagement(scope: TenantScope, id: string) {
+export async function getEngagement(scope: EngagementAccessScope, id: string) {
   const rows = await db
     .select()
     .from(engagements)
@@ -63,6 +70,7 @@ export async function getEngagement(scope: TenantScope, id: string) {
         engagements.organisationId,
         eq(engagements.id, id),
         isNull(engagements.deletedAt),
+        engagementVisibility(scope, engagements.id),
       ),
     )
     .limit(1);

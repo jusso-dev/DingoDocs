@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { assets } from "@/db/schema";
 import { apiReadContext, apiWriteContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { assertActorEngagementAccess } from "@/lib/permissions/require";
 import { createAsset } from "@/server/services/engagement-workspace";
 
 const createSchema = z.object({
@@ -25,6 +26,7 @@ export async function GET(
     const { id } = await context.params;
     z.string().uuid().parse(id);
     const principal = await apiReadContext(request, "engagements:read");
+    await assertActorEngagementAccess(principal, id);
     const rows = await db
       .select()
       .from(assets)

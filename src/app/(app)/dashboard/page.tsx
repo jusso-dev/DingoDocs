@@ -17,7 +17,7 @@ import { getDashboardData } from "@/server/services/dashboard";
 
 export default async function DashboardPage() {
   const context = await requireOrganisationContext();
-  const data = await getDashboardData(context.organisationId);
+  const data = await getDashboardData(context);
   const metrics = [
     {
       label: "Active engagements",

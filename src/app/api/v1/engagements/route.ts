@@ -2,10 +2,10 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { engagements } from "@/db/schema";
-import { clients } from "@/db/schema";
+import { clients, engagementMembers, engagements } from "@/db/schema";
 import { apiReadContext, apiWriteContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { engagementVisibility } from "@/lib/permissions/access";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -41,6 +41,7 @@ export async function GET(request: Request) {
       eq(engagements.organisationId, context.organisationId),
       isNull(engagements.deletedAt),
       query.status ? eq(engagements.status, query.status) : undefined,
+      engagementVisibility(context, engagements.id),
     );
     const orderColumn =
       query.sort === "name" ? engagements.name : engagements.createdAt;
@@ -116,6 +117,18 @@ export async function POST(request: Request) {
         ...input,
       })
       .returning();
+    if (
+      created &&
+      context.userId &&
+      !("serviceAccountId" in context && context.serviceAccountId)
+    ) {
+      await db.insert(engagementMembers).values({
+        organisationId: context.organisationId,
+        engagementId: created.id,
+        userId: context.userId,
+        role: "engagement_manager",
+      });
+    }
     return NextResponse.json({ data: created, requestId }, { status: 201 });
   } catch (error) {
     return apiError(error, requestId);
