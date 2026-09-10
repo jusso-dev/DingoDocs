@@ -12,6 +12,23 @@ describe("upload validation", () => {
     expect(result.storageKey).not.toContain("..");
   });
 
+  it("rejects a non-numeric MAX_UPLOAD_BYTES override", () => {
+    const previous = process.env.MAX_UPLOAD_BYTES;
+    process.env.MAX_UPLOAD_BYTES = "unlimited";
+    try {
+      expect(() =>
+        validateUpload({
+          size: 12,
+          mediaType: "image/png",
+          filename: "proof.png",
+        }),
+      ).toThrow("MAX_UPLOAD_BYTES is invalid");
+    } finally {
+      if (previous === undefined) delete process.env.MAX_UPLOAD_BYTES;
+      else process.env.MAX_UPLOAD_BYTES = previous;
+    }
+  });
+
   it("rejects executable and oversized content", () => {
     expect(() =>
       validateUpload({

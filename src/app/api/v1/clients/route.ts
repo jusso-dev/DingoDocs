@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { clients } from "@/db/schema";
 import { apiReadContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { clientVisibility } from "@/lib/permissions/access";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
       eq(clients.organisationId, context.organisationId),
       isNull(clients.deletedAt),
       query.q ? ilike(clients.name, `%${query.q}%`) : undefined,
+      clientVisibility(context, clients.id),
     );
     const column = query.sort === "name" ? clients.name : clients.createdAt;
     const [data, count] = await Promise.all([

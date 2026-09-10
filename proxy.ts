@@ -10,8 +10,11 @@ const publicPaths = [
   "/api/health",
   "/api/ready",
   "/api/openapi",
+  "/api/mcp",
   "/api/v1",
 ];
+const publicFile =
+  /\.(?:avif|css|gif|ico|jpe?g|js|map|png|svg|txt|webp|woff2?)$/i;
 
 function isPublic(pathname: string) {
   return publicPaths.some(
@@ -32,7 +35,7 @@ export default function proxy(request: NextRequest) {
   if (
     isPublic(pathname) ||
     pathname.startsWith("/_next") ||
-    pathname.includes(".")
+    publicFile.test(pathname)
   )
     return response;
 

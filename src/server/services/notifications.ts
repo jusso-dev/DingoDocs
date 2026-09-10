@@ -17,6 +17,11 @@ import {
   encryptIntegrationSecret,
 } from "@/lib/integrations/crypto";
 import { notificationProviders } from "@/lib/integrations/constants";
+import { isSafeInternalPath } from "@/lib/security/internal-path";
+import {
+  assertPublicHttpUrl,
+  outboundFetchInit,
+} from "@/lib/security/outbound-url";
 
 export { notificationProviders } from "@/lib/integrations/constants";
 
@@ -28,7 +33,7 @@ const deliverySchema = z
     actionUrl: z
       .string()
       .max(500)
-      .refine((value) => value.startsWith("/"), "Action URL must be relative")
+      .refine(isSafeInternalPath, "Action URL must be a relative path")
       .optional(),
   })
   .strict();
@@ -47,7 +52,7 @@ export async function createNotificationChannel(
     configuration: ChannelConfiguration;
   },
 ) {
-  validateConfiguration(input.provider, input.configuration);
+  await validateConfiguration(input.provider, input.configuration);
   if (input.provider === "in_app" && input.configuration.userId) {
     const [member] = await db
       .select({ id: organisationMembers.id })
@@ -86,16 +91,16 @@ export async function createNotificationChannel(
   return channel;
 }
 
-function validateConfiguration(
+async function validateConfiguration(
   provider: (typeof notificationProviders)[number],
   configuration: ChannelConfiguration,
 ) {
   if (provider === "in_app") z.string().uuid().parse(configuration.userId);
   else if (provider === "smtp") z.string().email().parse(configuration.to);
   else {
-    const url = new URL(z.string().url().parse(configuration.url));
-    if (process.env.NODE_ENV === "production" && url.protocol !== "https:")
-      throw new Error("Notification webhook must use HTTPS");
+    await assertPublicHttpUrl(z.string().url().parse(configuration.url), {
+      allowHttp: process.env.NODE_ENV !== "production",
+    });
   }
 }
 
@@ -259,11 +264,15 @@ async function providerSend(
               title: message.title,
               actionUrl: message.actionUrl,
             };
+  await assertPublicHttpUrl(configuration.url!, {
+    allowHttp: process.env.NODE_ENV !== "production",
+  });
   const response = await fetch(configuration.url!, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(10_000),
+    ...outboundFetchInit,
   });
   if (!response.ok)
     throw new Error(`Notification provider returned HTTP ${response.status}`);

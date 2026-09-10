@@ -173,7 +173,7 @@ run("integration automation with PostgreSQL", () => {
     };
     const webhook = await modules.createWebhook(actor, {
       name: "Delivery hook",
-      url: "https://hooks.example.test/dingodocs",
+      url: "https://8.8.8.8/dingodocs",
       events: ["finding.published"],
     });
     const [stored] = await modules.db
@@ -284,7 +284,7 @@ run("integration automation with PostgreSQL", () => {
       {
         name: "Generic delivery",
         provider: "webhook",
-        configuration: { url: "https://notify.example.test/hook" },
+        configuration: { url: "https://8.8.8.8/hook" },
       },
     );
     const unsafeNotification = {
@@ -325,9 +325,7 @@ run("integration automation with PostgreSQL", () => {
       .select()
       .from(modules.notificationChannels)
       .where(modules.eq(modules.notificationChannels.id, channel.id));
-    expect(storedChannel.configurationEncrypted).not.toContain(
-      "notify.example.test",
-    );
+    expect(storedChannel.configurationEncrypted).not.toContain("8.8.8.8");
   });
 
   it("requires deployment, organisation, and per-request AI opt-in and records untrusted drafts", async () => {

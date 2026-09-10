@@ -37,6 +37,23 @@ export async function globalSearch(
     actor.role as Role,
     "evidence:view_restricted",
   );
+  const canListClients =
+    canSeeAllEngagements(actor) ||
+    hasPermission(actor.role as Role, "client:manage") ||
+    hasPermission(actor.role as Role, "engagement:create");
+  const clientScope = canListClients
+    ? sql`true`
+    : sql`exists (
+        select 1 from engagements ce
+        inner join engagement_members cem
+          on cem.engagement_id = ce.id
+         and cem.organisation_id = ce.organisation_id
+        where ce.organisation_id = ${actor.organisationId}
+          and ce.client_id = c.id
+          and ce.deleted_at is null
+          and cem.user_id = ${actor.userId}
+          and cem.deleted_at is null
+      )`;
   const assigned = (
     engagementColumn:
       | "e.id"
@@ -53,7 +70,7 @@ export async function globalSearch(
       : sql`exists (select 1 from engagement_members em where em.organisation_id = ${actor.organisationId} and em.user_id = ${actor.userId} and em.deleted_at is null and em.engagement_id = ${sql.raw(engagementColumn)})`;
   const result = await db.execute<GlobalSearchResult>(sql`
     with q as (select websearch_to_tsquery('simple', ${query}) query), results as (
-      select 'client' type, c.id::text id, c.name title, coalesce(c.industry,'Client') subtitle, '/clients/'||c.id::text href, ts_rank(to_tsvector('simple', coalesce(c.name,'')||' '||coalesce(c.legal_name,'')||' '||coalesce(c.industry,'')), q.query) rank from clients c, q where c.organisation_id=${actor.organisationId} and c.deleted_at is null and to_tsvector('simple', coalesce(c.name,'')||' '||coalesce(c.legal_name,'')||' '||coalesce(c.industry,'')) @@ q.query
+      select 'client' type, c.id::text id, c.name title, coalesce(c.industry,'Client') subtitle, '/clients/'||c.id::text href, ts_rank(to_tsvector('simple', coalesce(c.name,'')||' '||coalesce(c.legal_name,'')||' '||coalesce(c.industry,'')), q.query) rank from clients c, q where c.organisation_id=${actor.organisationId} and c.deleted_at is null and ${clientScope} and to_tsvector('simple', coalesce(c.name,'')||' '||coalesce(c.legal_name,'')||' '||coalesce(c.industry,'')) @@ q.query
       union all select 'engagement', e.id::text, e.name, e.reference||' · '||e.type, '/engagements/'||e.id::text, ts_rank(to_tsvector('simple', coalesce(e.name,'')||' '||coalesce(e.reference,'')||' '||coalesce(e.objectives,'')), q.query) from engagements e,q where e.organisation_id=${actor.organisationId} and e.deleted_at is null and ${assigned("e.id")} and to_tsvector('simple', coalesce(e.name,'')||' '||coalesce(e.reference,'')||' '||coalesce(e.objectives,'')) @@ q.query
       union all select 'finding', f.id::text, f.identifier||' · '||f.title, f.severity::text||' · '||f.status::text, '/engagements/'||f.engagement_id::text||'?view=findings', ts_rank(to_tsvector('simple', coalesce(f.title,'')||' '||coalesce(f.identifier,'')||' '||coalesce(f.executive_summary,'')||' '||coalesce(f.technical_detail,'')||' '||coalesce(f.remediation,'')), q.query) from findings f,q where f.organisation_id=${actor.organisationId} and f.deleted_at is null and ${assigned("f.engagement_id")} and to_tsvector('simple', coalesce(f.title,'')||' '||coalesce(f.identifier,'')||' '||coalesce(f.executive_summary,'')||' '||coalesce(f.technical_detail,'')||' '||coalesce(f.remediation,'')) @@ q.query
       union all select 'template', t.id::text, t.title, t.stable_key, '/findings-library', ts_rank(to_tsvector('simple', coalesce(t.title,'')||' '||coalesce(t.summary,'')||' '||coalesce(t.technical_description,'')||' '||array_to_string(t.tags,' ')), q.query) from finding_templates t,q where t.organisation_id=${actor.organisationId} and to_tsvector('simple', coalesce(t.title,'')||' '||coalesce(t.summary,'')||' '||coalesce(t.technical_description,'')||' '||array_to_string(t.tags,' ')) @@ q.query

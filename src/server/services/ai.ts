@@ -10,6 +10,10 @@ import {
   encryptIntegrationSecret,
 } from "@/lib/integrations/crypto";
 import { aiConfirmation, aiProviders } from "@/lib/integrations/constants";
+import {
+  assertPublicHttpUrl,
+  outboundFetchInit,
+} from "@/lib/security/outbound-url";
 
 export { aiConfirmation, aiProviders } from "@/lib/integrations/constants";
 
@@ -25,7 +29,7 @@ export async function configureAiProvider(
 ) {
   if (input.provider !== "ollama" && !input.apiKey?.trim())
     throw new Error("An API key is required for this provider");
-  const baseUrl = providerBaseUrl(input.provider, input.baseUrl);
+  const baseUrl = await providerBaseUrl(input.provider, input.baseUrl);
   const [configuration] = await db
     .insert(aiConfigurations)
     .values({
@@ -69,7 +73,7 @@ export async function configureAiProvider(
   return configuration;
 }
 
-function providerBaseUrl(
+async function providerBaseUrl(
   provider: (typeof aiProviders)[number],
   configured?: string,
 ) {
@@ -80,16 +84,12 @@ function providerBaseUrl(
       : provider === "anthropic"
         ? "https://api.anthropic.com/v1"
         : "http://127.0.0.1:11434");
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol))
-    throw new Error("AI provider URL is invalid");
-  if (
-    process.env.NODE_ENV === "production" &&
-    provider !== "ollama" &&
-    url.protocol !== "https:"
-  )
-    throw new Error("External AI provider URL must use HTTPS");
-  return url.toString().replace(/\/$/, "");
+  const allowLoopback = provider === "ollama";
+  const url = await assertPublicHttpUrl(value, {
+    allowHttp: allowLoopback || process.env.NODE_ENV !== "production",
+    allowLoopback,
+  });
+  return url.replace(/\/$/, "");
 }
 
 export async function requestAiDraft(
@@ -115,9 +115,10 @@ export async function requestAiDraft(
   const apiKey = configuration.apiKeyEncrypted
     ? decryptIntegrationSecret(configuration.apiKeyEncrypted)
     : undefined;
+  const baseUrl = await providerBaseUrl(provider, configuration.baseUrl!);
   const output = await callProvider({
     provider,
-    baseUrl: configuration.baseUrl!,
+    baseUrl,
     model: configuration.model,
     apiKey,
     prompt: input.prompt,
@@ -172,6 +173,7 @@ async function callProvider(input: {
         store: false,
       }),
       signal: AbortSignal.timeout(60_000),
+      ...outboundFetchInit,
     });
     const data = (await checkedJson(response)) as {
       output_text?: string;
@@ -199,6 +201,7 @@ async function callProvider(input: {
         messages: [{ role: "user", content: input.prompt }],
       }),
       signal: AbortSignal.timeout(60_000),
+      ...outboundFetchInit,
     });
     const data = (await checkedJson(response)) as {
       content?: Array<{ type?: string; text?: string }>;
@@ -216,6 +219,7 @@ async function callProvider(input: {
       messages: [{ role: "user", content: input.prompt }],
     }),
     signal: AbortSignal.timeout(60_000),
+    ...outboundFetchInit,
   });
   const data = (await checkedJson(response)) as {
     message?: { content?: string };

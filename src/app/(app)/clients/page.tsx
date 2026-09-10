@@ -2,11 +2,11 @@ import { Building2, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { requireOrganisationContext } from "@/lib/permissions/require";
+import { requireInternalOrganisationContext } from "@/lib/permissions/require";
 import { listClients } from "@/server/repositories/tenant";
 
 export default async function ClientsPage() {
-  const context = await requireOrganisationContext();
+  const context = await requireInternalOrganisationContext();
   const rows = await listClients(context);
   return (
     <>

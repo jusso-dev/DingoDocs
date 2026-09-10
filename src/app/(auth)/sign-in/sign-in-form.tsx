@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
 import type { PublicAuthProvider } from "@/lib/auth/providers";
+import { safeInternalPath } from "@/lib/security/internal-path";
 
 export function SignInForm({ providers }: { providers: PublicAuthProvider[] }) {
   const search = useSearchParams();
@@ -15,11 +16,7 @@ export function SignInForm({ providers }: { providers: PublicAuthProvider[] }) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
-  const requestedNext = search.get("next");
-  const callbackURL =
-    requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
-      ? requestedNext
-      : "/dashboard";
+  const callbackURL = safeInternalPath(search.get("next"));
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();

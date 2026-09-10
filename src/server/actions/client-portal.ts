@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { evidenceFindings } from "@/db/schema";
 import { type Role } from "@/lib/permissions/matrix";
+import { requirePortalEngagement } from "@/lib/permissions/portal";
 import {
   requireOrganisationContext,
   requirePermission,
@@ -126,6 +127,7 @@ export async function uploadRemediationEvidenceAction(
   const context = await requireClientActor();
   const parsedEngagementId = id.parse(engagementId);
   const parsedFindingId = id.parse(findingId);
+  await requirePortalEngagement(context, parsedEngagementId, true);
   const portal = await getPortalEngagement(context, parsedEngagementId);
   if (!portal.findings.some((finding) => finding.id === parsedFindingId)) {
     throw new Error("The requested portal resource was not found");

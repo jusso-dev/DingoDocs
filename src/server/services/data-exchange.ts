@@ -81,6 +81,7 @@ export async function previewScannerImport(
     )
     .limit(1);
   if (!engagement) throw new ExchangeScopeError();
+  await assertActorEngagementAccess(actor, input.engagementId);
   const normalized = parseScannerImport(input.adapter, input.bytes);
   const source = await uploadEvidence(
     { ...actor, canViewRestricted: true },

@@ -19,29 +19,19 @@ import {
   encryptIntegrationSecret,
 } from "@/lib/integrations/crypto";
 import { redactSensitive } from "@/lib/observability/logger";
+import {
+  assertPublicHttpUrl,
+  outboundFetchInit,
+} from "@/lib/security/outbound-url";
 
 export type IntegrationActor = { organisationId: string; userId: string };
 
-function assertWebhookUrl(value: string) {
-  const url = new URL(value);
-  if (!["https:", "http:"].includes(url.protocol))
-    throw new Error("Webhook URL must use HTTP or HTTPS");
-  if (process.env.NODE_ENV === "production") {
-    if (url.protocol !== "https:")
-      throw new Error("Webhook URL must use HTTPS");
-    const host = url.hostname.toLowerCase();
-    if (
-      host === "localhost" ||
-      host === "::1" ||
-      /^127\./.test(host) ||
-      /^10\./.test(host) ||
-      /^192\.168\./.test(host) ||
-      /^169\.254\./.test(host) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-    )
-      throw new Error("Webhook URL cannot target a private network");
-  }
-  return url.toString();
+function webhookUrlOptions() {
+  return { allowHttp: process.env.NODE_ENV !== "production" };
+}
+
+async function assertWebhookUrl(value: string) {
+  return assertPublicHttpUrl(value, webhookUrlOptions());
 }
 
 export function signWebhookPayload(
@@ -88,7 +78,7 @@ export async function createWebhook(
     .values({
       organisationId: actor.organisationId,
       name: input.name.trim(),
-      url: assertWebhookUrl(input.url),
+      url: await assertWebhookUrl(input.url),
       events: [...new Set(input.events)],
       secretEncrypted: encryptIntegrationSecret(secret),
       createdBy: actor.userId,
@@ -227,6 +217,7 @@ export async function deliverWebhookJob(deliveryId: string) {
       timestamp,
       body,
     );
+  await assertWebhookUrl(record.url);
   const response = await fetch(record.url, {
     method: "POST",
     headers: {
@@ -238,6 +229,7 @@ export async function deliverWebhookJob(deliveryId: string) {
     },
     body,
     signal: AbortSignal.timeout(10_000),
+    ...outboundFetchInit,
   });
   const attempts = record.attempts + 1;
   await db

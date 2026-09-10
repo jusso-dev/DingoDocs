@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiWriteContext } from "@/lib/api/authentication";
 import { apiError } from "@/lib/api/responses";
+import { maxUploadBytes } from "@/lib/security/upload";
 import {
   EvidenceDuplicateError,
   scopedEvidenceActor,
@@ -62,6 +63,9 @@ async function handleUpload(
     .min(1, "At least one file is required")
     .max(25, "A maximum of 25 files is allowed")
     .parse(formData.getAll("files"));
+  const maxBytes = maxUploadBytes();
+  if (files.some((file) => file.size > maxBytes))
+    throw new Error(`File must be between 1 byte and ${maxBytes} bytes`);
 
   const results: Array<
     | {

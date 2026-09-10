@@ -53,6 +53,7 @@ export async function PATCH(
           eq(findings.id, id),
           eq(findings.organisationId, principal.organisationId),
           isNull(findings.deletedAt),
+          engagementVisibility(principal, findings.engagementId),
         ),
       )
       .limit(1);

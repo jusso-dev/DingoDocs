@@ -5,6 +5,7 @@ import { findings } from "@/db/schema";
 import { linkFindingEvidenceInput } from "@/lib/api/finding-input";
 import { apiReadContext, apiWriteContext } from "@/lib/api/authentication";
 import { apiError, apiNotFound } from "@/lib/api/responses";
+import { engagementVisibility } from "@/lib/permissions/access";
 import { linkFindingEvidence } from "@/server/services/findings";
 
 export async function POST(
@@ -25,6 +26,7 @@ export async function POST(
           eq(findings.id, id),
           eq(findings.organisationId, reader.organisationId),
           isNull(findings.deletedAt),
+          engagementVisibility(reader, findings.engagementId),
         ),
       )
       .limit(1);

@@ -3,6 +3,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import { clients, engagements } from "@/db/schema";
 import {
+  clientVisibility,
   engagementVisibility,
   type AccessActor,
 } from "@/lib/permissions/access";
@@ -19,17 +20,25 @@ export function tenantWhere(
   return and(eq(organisationColumn, scope.organisationId), ...conditions);
 }
 
-export async function listClients(scope: TenantScope) {
+export async function listClients(scope: TenantScope & Partial<AccessActor>) {
   return db
     .select()
     .from(clients)
     .where(
-      tenantWhere(scope, clients.organisationId, isNull(clients.deletedAt)),
+      tenantWhere(
+        scope,
+        clients.organisationId,
+        isNull(clients.deletedAt),
+        clientVisibility(scope, clients.id),
+      ),
     )
     .orderBy(clients.name);
 }
 
-export async function getClient(scope: TenantScope, id: string) {
+export async function getClient(
+  scope: TenantScope & Partial<AccessActor>,
+  id: string,
+) {
   const rows = await db
     .select()
     .from(clients)
@@ -39,6 +48,7 @@ export async function getClient(scope: TenantScope, id: string) {
         clients.organisationId,
         eq(clients.id, id),
         isNull(clients.deletedAt),
+        clientVisibility(scope, clients.id),
       ),
     )
     .limit(1);

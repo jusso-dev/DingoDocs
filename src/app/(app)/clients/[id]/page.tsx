@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { clientContacts, engagements } from "@/db/schema";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/ui/status-pill";
-import { requireOrganisationContext } from "@/lib/permissions/require";
+import { requireInternalOrganisationContext } from "@/lib/permissions/require";
 import { getClient } from "@/server/repositories/tenant";
 
 export default async function ClientPage({
@@ -13,7 +13,7 @@ export default async function ClientPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const context = await requireOrganisationContext();
+  const context = await requireInternalOrganisationContext();
   const client = await getClient(context, id);
   if (!client) notFound();
   const [contacts, engagementCount] = await Promise.all([

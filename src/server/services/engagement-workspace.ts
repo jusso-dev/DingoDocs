@@ -20,7 +20,7 @@ import {
   timeEntries,
   users,
 } from "@/db/schema";
-import type { Role } from "@/lib/permissions/matrix";
+import { canGrantRole, roleRank, type Role } from "@/lib/permissions/matrix";
 import { EngagementAccessError } from "@/lib/permissions/access";
 import {
   assertEngagementAccess,
@@ -516,9 +516,13 @@ export async function assignEngagementMember(
   actor: WorkspaceActor,
   input: { engagementId: string; userId: string; role: Role },
 ) {
-  await requireActorPermission(actor, "engagement:manage_members", {
-    engagementId: input.engagementId,
-  });
+  const operationRoles = await requireActorPermission(
+    actor,
+    "engagement:manage_members",
+    {
+      engagementId: input.engagementId,
+    },
+  );
   if (
     !engagementRoles.includes(input.role as (typeof engagementRoles)[number])
   ) {
@@ -526,6 +530,12 @@ export async function assignEngagementMember(
       "Role cannot be assigned to an engagement",
     );
   }
+  const actorRole = operationRoles.reduce<Role | undefined>(
+    (best, role) => (!best || roleRank[role] < roleRank[best] ? role : best),
+    undefined,
+  );
+  if (!actorRole || !canGrantRole(actorRole, input.role))
+    throw new WorkspaceScopeError("Cannot assign a more privileged role");
   return db.transaction(async (tx) => {
     await requireEngagement(tx, actor, input.engagementId);
     const [membership] = await tx

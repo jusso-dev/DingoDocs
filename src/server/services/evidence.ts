@@ -538,6 +538,7 @@ export async function scanEvidenceJob(
     },
     body: bytes,
     signal: AbortSignal.timeout(60_000),
+    redirect: "error",
   });
   if (!response.ok)
     throw new Error(`Malware scanner returned ${response.status}`);

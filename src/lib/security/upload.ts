@@ -16,12 +16,25 @@ const allowedMediaTypes = new Set([
   "application/yaml",
 ]);
 
+const defaultMaxUploadBytes = 104_857_600;
+const absoluteMaxUploadBytes = 1_073_741_824;
+
+export function maxUploadBytes() {
+  const raw = process.env.MAX_UPLOAD_BYTES;
+  if (raw === undefined || raw === "") return defaultMaxUploadBytes;
+  if (!/^[0-9]+$/.test(raw)) throw new Error("MAX_UPLOAD_BYTES is invalid");
+  const max = Number(raw);
+  if (!Number.isSafeInteger(max) || max < 1 || max > absoluteMaxUploadBytes)
+    throw new Error("MAX_UPLOAD_BYTES is invalid");
+  return max;
+}
+
 export function validateUpload(input: {
   size: number;
   mediaType: string;
   filename: string;
 }) {
-  const max = Number(process.env.MAX_UPLOAD_BYTES ?? 104_857_600);
+  const max = maxUploadBytes();
   if (!Number.isSafeInteger(input.size) || input.size <= 0 || input.size > max)
     throw new Error(`File must be between 1 byte and ${max} bytes`);
   if (!allowedMediaTypes.has(input.mediaType.toLowerCase()))

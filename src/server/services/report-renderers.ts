@@ -1097,8 +1097,12 @@ function safeFont(value: string) {
 }
 function sanitiseCss(value: string) {
   return value
-    .replace(/[<>]/g, "")
-    .replace(/@import/gi, "")
+    .replace(/[<>\\]/g, "")
+    .replace(/@/g, "")
     .replace(/url\s*\(/gi, "blocked(")
+    .replace(/expression/gi, "")
+    .replace(/javascript:/gi, "")
+    .replace(/behavior/gi, "")
+    .replace(/-moz-binding/gi, "")
     .slice(0, 50_000);
 }

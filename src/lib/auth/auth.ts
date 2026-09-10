@@ -30,9 +30,10 @@ export const auth = betterAuth({
   appName: "DingoDocs",
   secret: secret ?? "development-secret-change-before-production",
   baseURL,
-  trustedOrigins: (
-    process.env.TRUSTED_ORIGINS ?? "http://localhost:3000"
-  ).split(","),
+  trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   database: drizzleAdapter(db, { provider: "pg", usePlural: true }),
   user: {
     additionalFields: {
@@ -141,6 +142,7 @@ export const auth = betterAuth({
         attributes: {
           httpOnly: true,
           sameSite: "lax",
+          secure: process.env.NODE_ENV === "production",
         },
       },
     },
